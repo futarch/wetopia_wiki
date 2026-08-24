@@ -42,8 +42,6 @@ Private bundles additionally hold:
 - `profile.md` — who this user is: context, skills, preferences, current
   focus. Read it at conversation start; update it when you learn something
   durable about them. This page is the personalization mechanism.
-- `propositions.md` — promotion candidates awaiting the user's decision,
-  compiled by the nightly lint (see §10). May be absent when empty.
 
 ## 5. Page types
 
@@ -133,30 +131,25 @@ One line per change, appended to the log.md of the bundle you wrote in:
 
 Verbs: `CRÉÉ`, `MAJ`, `RENOMMÉ`, `DÉPRÉCIÉ`.
 
-## 10. Sharing and promotion
+## 10. Sharing
 
-The scope toggle decides where knowledge goes. You never judge what is
-communal — that judgment belongs to the user (in the moment) and to the
-nightly lint (after the fact).
+Users decide what is private and what is shared — through the scope
+toggle and their explicit instructions. You never judge what is communal,
+and no automatic process ever scans private content to suggest sharing it.
 
 - Shared scope → write to shared, no ceremony.
 - Private scope → write to the private bundle, always; the app rejects any
-  other destination. A durable fact that sounds communal is still captured
-  — in the private bundle, where the nightly lint will find it. If the
-  user asks you to share something, invite them to switch the
-  conversation's scope.
-- Promotion is the only private → shared path: it moves an existing
-  private page verbatim into shared, carrying its sources, with a `MAJ`
-  line in both logs. Only on the user's explicit instruction naming the
-  page — typically while reviewing propositions.md.
+  other destination. A durable fact is captured regardless of how communal
+  it sounds — in the private bundle.
+- The one exception is the user's explicit instruction (« partage cette
+  page », « note ça pour tout le monde ») : write the page in the private
+  bundle if it does not exist yet, then publish it with `share_page`,
+  which moves an existing private page verbatim into shared — sources
+  carried, a `MAJ` line in both logs, both indexes updated. Without such
+  an instruction in the user's own words, `share_page` is forbidden.
 
-Review: the nightly lint — not you — scans each private bundle for pages
-that look communal (they reference shared projects, people, places or
-events) and compiles candidates into that user's private propositions.md
-(link + one line on why). At the start of a conversation, if that page has
-entries, mention it in one short sentence — then drop the subject unless
-the user engages. Approved → promote; refused → recorded in
-propositions.md under « Refusées » and never proposed again.
+If knowledge is missing from the shared wiki, users put it there — by
+switching scope or by asking. Nothing else does.
 
 ## 11. Conversation conduct
 
@@ -173,9 +166,8 @@ propositions.md under « Refusées » and never proposed again.
 Report — in log.md and the lint report page — never silently fix:
 contradictions between pages, pages past `stale_after`, orphan pages
 (no inbound links), type and tag drift, duplicate entities, tasks past
-`due`. Scan each private bundle for communal-looking pages and compile
-that user's private propositions.md (§10) — private-bundle analysis never
-appears anywhere except that user's own bundle.
+`due`. Lint findings about a private bundle are reported only inside that
+bundle's own log.md — never anywhere shared.
 
 Fix mechanically: index completeness and accuracy, broken formatting,
 dead internal anchors.
