@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "app_id": "app_6f9ff783-560f-47e2-bf64-3c7f8a85a208",
+      "org_id": "user_601d4826-04a0-4e2c-ab4a-8e4d13c3c409",
+      "deploy_url": "https://push-n3-par-clevercloud-customers.services.clever-cloud.com/app_6f9ff783-560f-47e2-bf64-3c7f8a85a208.git",
+      "git_ssh_url": "git+ssh://git@push-n3-par-clevercloud-customers.services.clever-cloud.com/app_6f9ff783-560f-47e2-bf64-3c7f8a85a208.git",
+      "name": "wetopia-node",
+      "alias": "wetopia-node"
+    }
+  ]
+}
