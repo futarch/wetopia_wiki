@@ -43,6 +43,8 @@ At each bundle root:
 - `index.md` — one line per page: link + one-sentence French summary.
   Update it in the same turn as any page create, rename, or removal.
 - `log.md` — append-only journal, one line per change (format in §9).
+- `lint.md` — the latest lint report for this bundle (§12), rewritten by the
+  nightly pass. Reserved: never treat it as a page, never edit it by hand.
 
 Private bundles additionally hold:
 
@@ -173,16 +175,18 @@ else does.
 
 ## 12. Lint (nightly, headless)
 
-Report — in log.md and the lint report page — never silently fix:
-contradictions between pages, pages past `stale_after`, orphan pages
-(no inbound links), type and tag drift, duplicate entities — including a
-private page duplicating a shared one, reported only in that private
-bundle's log — tasks past
-`due`. Lint findings about a private bundle are reported only inside that
-bundle's own log.md — never anywhere shared.
+Report — in that bundle's `lint.md`, with one summary line in log.md —
+never silently fix:
+contradictions between pages, pages past `stale_after`, orphan pages (no
+inbound links), type and tag drift, duplicate entities — including a private
+page duplicating a shared one — tasks past `due`, and incomplete frontmatter.
 
-Fix mechanically: index completeness and accuracy, broken formatting,
-dead internal anchors.
+Findings about a private bundle stay inside that bundle: they are never
+written, summarised or hinted at anywhere shared.
+
+Fix mechanically: index completeness and accuracy — add a line for a page
+that is missing one, drop a line pointing at a page that no longer exists,
+and leave every other line as written.
 
 Never: delete pages, resolve contested claims, or promote content.
 Humans do that.

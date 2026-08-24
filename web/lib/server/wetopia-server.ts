@@ -2,6 +2,7 @@
 import { getPiThreadSupervisor } from "@assistant-ui/react-pi/node";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import fs from "node:fs";
 import path from "node:path";
 import { boot, getWetopia } from "../agent/runtime.ts";
 import { ensureWorkspace, workspacePath } from "../agent/workspace.ts";
@@ -65,6 +66,20 @@ export async function resolveWorkspace(wikiId: string, scope: unknown): Promise<
   // Make sure the private bundle exists before a conversation can touch it.
   await getWetopia().ensureUser(wikiId);
   return ensureWorkspace({ user: wikiId, scope, root: config.workspaceRoot, modelId: config.modelId });
+}
+
+/**
+ * Users whose private bundle exists on disk — the set the lint must cover.
+ * Read from the working tree rather than a list, so a user created after boot
+ * is linted the same night.
+ */
+export function listUsersWithBundles(): string[] {
+  const dir = path.join(config.dataRoot, "users");
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
 }
 
 /** Which (user, scope) a workspace path belongs to — for authorising threads. */
