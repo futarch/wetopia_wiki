@@ -151,7 +151,9 @@ export async function computeHealth(): Promise<Health> {
   if (!process.env.WETOPIA_CRON_SECRET) problems.push("WETOPIA_CRON_SECRET absent : le lint ne peut pas être déclenché");
   const prod = process.env.NODE_ENV === "production";
   if (prod && !process.env.BETTER_AUTH_SECRET) problems.push("BETTER_AUTH_SECRET absent en production");
-  if (prod && !process.env.DATABASE_URL) problems.push("DATABASE_URL absent : l'auth est sur un SQLite éphémère");
+  if (prod && !(process.env.DATABASE_URL ?? process.env.POSTGRESQL_ADDON_URI)) {
+    problems.push("aucune base Postgres : l'auth est sur un SQLite éphémère");
+  }
   if (prod && !process.env.WETOPIA_ALLOWED_EMAILS) {
     problems.push("WETOPIA_ALLOWED_EMAILS absent : n'importe qui peut créer un compte");
   }

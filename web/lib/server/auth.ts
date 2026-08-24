@@ -13,11 +13,20 @@ import { config } from "./config.ts";
 
 const require = createRequire(import.meta.url);
 
+/**
+ * Clever Cloud injects POSTGRESQL_ADDON_URI when a Postgres add-on is linked.
+ * Reading it directly beats copying the URI into DATABASE_URL by hand: one
+ * fewer duplicated secret, and rotating the add-on's credentials keeps working.
+ */
+export const databaseUrl = (): string | undefined =>
+  process.env.DATABASE_URL ?? process.env.POSTGRESQL_ADDON_URI;
+
 function database() {
-  if (process.env.DATABASE_URL) {
+  const url = databaseUrl();
+  if (url) {
     // Postgres (Clever Cloud add-on) — auth state only.
     const { Pool } = require("pg");
-    return new Pool({ connectionString: process.env.DATABASE_URL });
+    return new Pool({ connectionString: url });
   }
   const Database = require("better-sqlite3");
   fs.mkdirSync(path.dirname(config.authDbFile), { recursive: true });
