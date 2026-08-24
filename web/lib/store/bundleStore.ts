@@ -19,6 +19,12 @@ export interface BundleStore {
   fetch(key: string, destFile: string): Promise<void>;
   /** Keep the newest `keep` bundles for `repo`, delete the rest. */
   prune(repo: string, keep: number): Promise<void>;
+
+  // --- generic object access, for things that are not bundles (transcripts) ---
+  /** Every object under `prefix`, recursively, newest-key first. */
+  listObjects(prefix: string): Promise<StoredBundle[]>;
+  /** Delete objects by exact key. */
+  removeObjects(keys: string[]): Promise<void>;
 }
 
 export function bundleKey(repo: string, sha: string, at: number): string {
@@ -70,5 +76,29 @@ export class LocalBundleStore implements BundleStore {
   async prune(repo: string, keep: number): Promise<void> {
     const all = await this.list(repo);
     for (const b of all.slice(keep)) fs.rmSync(this.abs(b.key), { force: true });
+  }
+
+  async listObjects(prefix: string): Promise<StoredBundle[]> {
+    const base = this.abs(prefix);
+    if (!fs.existsSync(base)) return [];
+    const out: StoredBundle[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(abs);
+        else if (entry.isFile() && !entry.name.endsWith(".tmp")) {
+          out.push({
+            key: path.relative(this.root, abs).split(path.sep).join("/"),
+            size: fs.statSync(abs).size,
+          });
+        }
+      }
+    };
+    walk(base);
+    return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+  }
+
+  async removeObjects(keys: string[]): Promise<void> {
+    for (const k of keys) fs.rmSync(this.abs(k), { force: true });
   }
 }

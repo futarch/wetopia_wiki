@@ -127,6 +127,36 @@ export class S3BundleStore implements BundleStore {
     fs.renameSync(tmp, destFile);
   }
 
+  async listObjects(prefix: string): Promise<StoredBundle[]> {
+    const out: StoredBundle[] = [];
+    let token: string | undefined;
+    do {
+      const res = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: this.key(`${prefix}/`),
+          ContinuationToken: token,
+        }),
+      );
+      for (const o of res.Contents ?? []) {
+        if (o.Key) out.push({ key: o.Key.slice(this.prefix.length), size: o.Size ?? 0 });
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token);
+    return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+  }
+
+  async removeObjects(keys: string[]): Promise<void> {
+    for (let i = 0; i < keys.length; i += 1000) {
+      await this.client.send(
+        new DeleteObjectsCommand({
+          Bucket: this.bucket,
+          Delete: { Objects: keys.slice(i, i + 1000).map((k) => ({ Key: this.key(k) })) },
+        }),
+      );
+    }
+  }
+
   async prune(repo: string, keep: number): Promise<void> {
     const all = await this.list(repo);
     const doomed = all.slice(keep);

@@ -41,6 +41,29 @@ serait un second écrivain en course sur les mêmes bundles.
 
 Ou n'importe quelle sonde externe (UptimeRobot, etc.) sur la même URL.
 
+## Où vivent les transcripts
+
+pi écrit un transcript JSONL par conversation. Par défaut il les met dans
+`~/.pi/agent/sessions` — le home de l'utilisateur qui fait tourner le
+processus, hors de tout ce qu'on gère. L'option `agentDir` du superviseur ne
+suffit pas : il construit son `SessionManager` lui-même. Le levier est la
+variable d'environnement `PI_CODING_AGENT_DIR`, fixée par `lib/server/config.ts`
+avant tout appel à pi.
+
+Ils sont donc dans `runtime/agent/sessions/`, et le passage nocturne les
+archive **à côté** des bundles (préfixe `sessions/` du même bucket), jamais
+**dedans** :
+
+- un transcript contient le corps de chaque page lue plus tout ce que la
+  personne a tapé : dans git, il gonflerait chaque instantané ;
+- l'historique git est append-only et les bundles sont immuables — un
+  transcript commité serait ineffaçable. Hors de git, une politique de
+  rétention suffit (`WETOPIA_SESSION_RETENTION_DAYS`, 90 jours par défaut).
+
+Seuls les fichiers nouveaux ou qui ont grandi sont téléversés : un transcript
+ne fait que croître tant que sa conversation vit, donc une taille identique
+signifie qu'il n'y a rien de neuf à conserver.
+
 ## `/api/health`
 
 Deux niveaux, volontairement :

@@ -6,8 +6,10 @@
 // second writer racing this one over the same bundles.
 //
 // Clever Cloud:  0 3 * * *  curl -fsS -H "authorization: Bearer $WETOPIA_CRON_SECRET" https://…/api/cron/lint
-import { listUsersWithBundles, ready } from "../../../../lib/server/wetopia-server.ts";
+import { getWetopia, listUsersWithBundles, ready } from "../../../../lib/server/wetopia-server.ts";
+import { config } from "../../../../lib/server/config.ts";
 import { runLint } from "../../../../lib/lint/run.ts";
+import { archiveSessions } from "../../../../lib/store/sessionArchive.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,9 +38,21 @@ async function handle(req: Request): Promise<Response> {
   const started = Date.now();
   try {
     const reports = await runLint({ users: listUsersWithBundles(), withModel });
+
+    // Transcripts ride the same nightly pass: they are kept durably beside the
+    // bundles, never inside them.
+    const archive = await archiveSessions(getWetopia().bundleStore, config.sessionsDir, {
+      retentionDays: config.sessionRetentionDays,
+    });
+
     return Response.json({
       ok: true,
       durationMs: Date.now() - started,
+      sessions: {
+        uploaded: archive.uploaded.length,
+        skipped: archive.skipped,
+        deleted: archive.deleted.length,
+      },
       bundles: reports.map((r) => ({
         bundle: r.bundle,
         findings: r.findings.length,

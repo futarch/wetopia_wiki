@@ -20,6 +20,8 @@ export interface Wetopia {
   /** When this process booted, and how each bundle came up. */
   bootedAt: number;
   openReports: OpenReport[];
+  /** The durable object store itself — transcripts live beside the bundles. */
+  bundleStore: BundleStore;
 }
 
 const KEY = Symbol.for("wetopia.runtime");
@@ -116,6 +118,7 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
     ensureUser,
     bootedAt: Date.now(),
     openReports,
+    bundleStore,
   };
   slot[KEY] = runtime;
   return runtime;
