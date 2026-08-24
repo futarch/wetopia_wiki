@@ -11,6 +11,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export interface SessionContext {
+  user: string;
+  scope: "private" | "shared";
+  dataRoot: string;
+  sharedRoot: string;
+  privateRoot: string;
+  readRoots: string[];
+  writeRoots: string[];
+  resolveBundlePath: (p: string, opts?: { forWrite?: boolean }) => string;
+}
+
 export const within = (abs, root) => abs === root || abs.startsWith(root + path.sep);
 
 /** Resolve symlinks on the deepest existing ancestor, keeping the missing tail. */

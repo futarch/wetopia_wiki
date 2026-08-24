@@ -20,6 +20,8 @@ export interface WikiStoreOptions {
   keepBundles?: number;
   /** Seed a repo the very first time it is created (no bundle exists yet). */
   seed?: (repo: string, dir: string) => void | Promise<void>;
+  /** Map a repo name to its checkout path, relative to workDir. */
+  layout?: (repo: string) => string;
   now?: () => number;
 }
 
@@ -35,21 +37,36 @@ export class WikiStore {
   private readonly store: BundleStore;
   private readonly keepBundles: number;
   private readonly seed?: WikiStoreOptions["seed"];
+  private readonly layout?: WikiStoreOptions["layout"];
   private readonly now: () => number;
   /** The single-writer queue: every mutation chains onto this promise. */
   private tail: Promise<unknown> = Promise.resolve();
+  /** Repos mutated since the last flush. */
+  private readonly dirty = new Set<string>();
 
   constructor(o: WikiStoreOptions) {
     this.workDir = o.workDir;
     this.store = o.store;
     this.keepBundles = o.keepBundles ?? 30;
     this.seed = o.seed;
+    this.layout = o.layout;
     this.now = o.now ?? Date.now;
   }
 
+  /**
+   * Where a repo is checked out. Repos are flat names (`shared`,
+   * `users-albert`) but the working tree mirrors the wiki's own layout
+   * (`shared/`, `users/albert/`) so the path guard sees the bundle paths the
+   * charter describes.
+   */
   dirFor(repo: string): string {
     if (!/^[a-z0-9][a-z0-9._-]*$/i.test(repo)) throw new Error(`nom de repo invalide : ${repo}`);
-    return path.join(this.workDir, repo);
+    const rel = this.layout ? this.layout(repo) : repo;
+    const abs = path.resolve(this.workDir, rel);
+    if (abs !== this.workDir && !abs.startsWith(this.workDir + path.sep)) {
+      throw new Error(`layout invalide pour ${repo}`);
+    }
+    return abs;
   }
 
   /** Rebuild each repo from its newest bundle, or create it fresh. */
@@ -88,6 +105,39 @@ export class WikiStore {
       await this.flushNow(repo, message);
       return result;
     });
+  }
+
+  /**
+   * Mutate a repo inside the queue WITHOUT bundling. Used by the agent's tools:
+   * a single turn touches the page, the index and the log, and bundling each
+   * one separately would upload three full snapshots. Durability is taken at
+   * the end of the turn instead — see `flushDirty`, which runs before the user
+   * is told the turn is done, so the upload-before-ACK guarantee still holds at
+   * the level the user actually perceives.
+   */
+  async mutate<T>(repo: string, fn: () => T | Promise<T>): Promise<T> {
+    return this.enqueue(async () => {
+      const result = await fn();
+      this.dirty.add(repo);
+      return result;
+    });
+  }
+
+  /** Commit + bundle + store every repo touched since the last flush. */
+  async flushDirty(message: string): Promise<string[]> {
+    return this.enqueue(async () => {
+      const flushed: string[] = [];
+      for (const repo of [...this.dirty]) {
+        const sha = await this.flushNow(repo, message);
+        this.dirty.delete(repo);
+        if (sha) flushed.push(repo);
+      }
+      return flushed;
+    });
+  }
+
+  hasPendingWrites(): boolean {
+    return this.dirty.size > 0;
   }
 
   /** Serialize arbitrary work on the writer queue (used by the lint pass). */

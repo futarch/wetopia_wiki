@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/guard.test.ts",
+    "test": "node --experimental-strip-types lib/guard.test.ts && node --experimental-strip-types lib/store/store.test.ts",
     "test:store": "node --experimental-strip-types lib/store/store.test.ts",
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.84.3",
+    "@earendil-works/pi-coding-agent": "^0.84.3",
+    "typebox": "^1.3.18"
   }
 }
