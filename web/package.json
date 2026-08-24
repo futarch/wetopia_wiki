@@ -1,0 +1,13 @@
+{
+  "name": "wetopia-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/guard.test.ts",
+    "test:store": "node --experimental-strip-types lib/store/store.test.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  }
+}
