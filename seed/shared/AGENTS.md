@@ -117,6 +117,9 @@ Write when you learn a durable fact — something a member would want to find
 in a month. Just answer when it is only conversation.
 
 - Update over create: search the index before creating any page.
+- Link, don't copy: in private scope, never duplicate shared content into
+  a private page — link to the shared page and write only what is
+  personal (your notes, your view, your tasks about it).
 - Edit surgically; preserve existing content; never rewrite a page
   wholesale unless asked.
 - Contradictions: a newer assertion by the person concerned wins — update
@@ -172,7 +175,9 @@ else does.
 
 Report — in log.md and the lint report page — never silently fix:
 contradictions between pages, pages past `stale_after`, orphan pages
-(no inbound links), type and tag drift, duplicate entities, tasks past
+(no inbound links), type and tag drift, duplicate entities — including a
+private page duplicating a shared one, reported only in that private
+bundle's log — tasks past
 `due`. Lint findings about a private bundle are reported only inside that
 bundle's own log.md — never anywhere shared.
 
