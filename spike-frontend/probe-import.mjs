@@ -1,0 +1,13 @@
+import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { getModel } from "@earendil-works/pi-ai/compat";
+import path from "node:path"; import { fileURLToPath } from "node:url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const cwd = path.join(__dirname, "ws");
+const model = getModel("mistral", "mistral-medium-latest");
+const modelRuntime = await ModelRuntime.create({ authPath: path.join(__dirname,".pi-agent","auth.json"), modelsPath: path.join(__dirname,".pi-agent","models.json") });
+if (modelRuntime.setRuntimeApiKey) await modelRuntime.setRuntimeApiKey("mistral", process.env.MISTRAL_API_KEY);
+const { session } = await createAgentSession({ cwd, sessionManager: SessionManager.inMemory(cwd), model, modelRuntime });
+const names = (session.state.tools ?? []).map(t => t.name ?? t);
+console.log("TOOLS:", JSON.stringify(names));
+console.log("absolute-import extension loaded:", names.includes("app_tool"));
+session.dispose();

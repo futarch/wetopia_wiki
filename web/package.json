@@ -9,11 +9,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts"
+    "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts",
+    "check:ui": "node lib/ui.check.mjs"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.15.16",
+    "@assistant-ui/react-pi": "^0.0.19",
     "@earendil-works/pi-ai": "^0.84.3",
     "@earendil-works/pi-coding-agent": "^0.84.3",
+    "next": "^16.3.2",
+    "playwright": "^1.62.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
     "typebox": "^1.3.18"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }
