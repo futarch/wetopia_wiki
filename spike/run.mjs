@@ -46,7 +46,7 @@ function resolveBundlePath(p, { forWrite = false } = {}) {
     throw new Error(
       "conversation en scope privé : toute écriture va dans /users/" + USER +
       " (charte §10). Note ce contenu dans /users/" + USER +
-      " ; publication dans /shared uniquement sur instruction explicite de l'utilisateur (share_page) ou en scope partagé."
+      " ; pour écrire dans le wiki partagé, l'utilisateur bascule la conversation en scope partagé."
     );
   }
   return abs;
@@ -161,42 +161,6 @@ const appendLog = defineTool({
   },
 });
 
-const sharePage = defineTool({
-  name: "share_page",
-  description:
-    "Publier une page privée existante dans le wiki partagé (déplacement verbatim vers /shared, même sous-chemin). UNIQUEMENT sur instruction explicite de l'utilisateur (« partage cette page », « note ça pour tout le monde »). Mets ensuite à jour les index et journaux des deux bundles.",
-  parameters: Type.Object({ path: Type.String({ description: "page privée existante, ex. /users/albert/events/fete.md" }) }),
-  execute: async (_id, { path: p }) => {
-    toolCalls.push(["share_page", p]);
-    try {
-      if (!p.startsWith(`/users/${USER}/`)) throw new Error("share_page ne publie que des pages de ton bundle privé");
-      const base = p.split("/").pop();
-      if (["profile.md", "index.md", "log.md"].includes(base)) throw new Error("page réservée, non partageable");
-      const absFrom = resolveBundlePath(p);
-      if (!fs.existsSync(absFrom)) throw new Error(`page inexistante : ${p}`);
-      const target = "/shared/" + p.slice(`/users/${USER}/`.length);
-      const absTo = path.resolve(DATA, "." + target);
-      if (!absTo.startsWith(path.join(DATA, "shared") + path.sep)) throw new Error("cible invalide");
-      fs.mkdirSync(path.dirname(absTo), { recursive: true });
-      fs.copyFileSync(absFrom, absTo);
-      fs.rmSync(absFrom);
-      // Deterministic bookkeeping: logs and indexes on both sides.
-      const pageText = fs.readFileSync(absTo, "utf8");
-      const desc = (pageText.match(/description:\s*"?([^"\n]+?)"?\s*$/m) || [])[1] || "";
-      const stamp = `${TODAY}T12:00Z [human:${USER}]`;
-      fs.appendFileSync(path.join(DATA, "shared", "log.md"), `- ${stamp} CRÉÉ ${target} — publié depuis le bundle privé sur instruction de l'utilisateur\n`);
-      fs.appendFileSync(path.join(DATA, "users", USER, "log.md"), `- ${stamp} MAJ ${p} — publié dans le wiki partagé (${target})\n`);
-      const sharedIndex = path.join(DATA, "shared", "index.md");
-      fs.appendFileSync(sharedIndex, `- [${target}](${target}) — ${desc}\n`);
-      const privIndex = path.join(DATA, "users", USER, "index.md");
-      if (fs.existsSync(privIndex)) {
-        fs.writeFileSync(privIndex, fs.readFileSync(privIndex, "utf8").split("\n").filter((l) => !l.includes(p)).join("\n"));
-      }
-      return ok(`publié : ${p} → ${target}. Index et journaux des deux bundles mis à jour automatiquement.`);
-    } catch (e) { return err(e); }
-  },
-});
-
 // ---------- system prompt: charter + runtime context ----------
 const charter = fs.readFileSync(CHARTER, "utf8");
 const systemPrompt = (scope, sessionId) => `${charter}
@@ -209,9 +173,8 @@ const systemPrompt = (scope, sessionId) => `${charter}
 - user: human:${USER} (Albert)
 - conversation scope: ${scope}${scope === "private" ? `
   (scope privé : toute écriture va dans /users/${USER} — un fait durable
-  est capturé même s'il semble communal ; publication dans /shared
-  uniquement sur instruction explicite de l'utilisateur, via share_page,
-  ou si l'utilisateur bascule la conversation en scope partagé)` : ""}
+  est capturé même s'il semble communal ; pour écrire dans le wiki
+  partagé, l'utilisateur bascule la conversation en scope partagé)` : ""}
 - session id: session:${sessionId}
 - accessible bundles: /shared (partagé), /users/${USER} (privé d'Albert)
 - tools: read_page, search, write_page, append_log — bundle-absolute paths only.
@@ -293,8 +256,8 @@ async function conversation(name, scope, prompts) {
     thinkingLevel: "off",
     modelRuntime,
     resourceLoader: resourceLoader(scope, name),
-    tools: ["read_page", "search", "write_page", "append_log", "share_page"],
-    customTools: [readPage, searchTool, writePage, appendLog, sharePage],
+    tools: ["read_page", "search", "write_page", "append_log"],
+    customTools: [readPage, searchTool, writePage, appendLog],
     sessionManager: SessionManager.inMemory(DATA),
     settingsManager,
   });
@@ -351,7 +314,7 @@ let d3 = diff(snapC, snapshot());
 check("conv3: réponse mentionne le broyeur", stripAccents(transcripts["conv3-mes-taches"]).includes("broyeur"));
 check("conv3: lecture seule (pas d'écriture nécessaire)", d3.changed.length + d3.created.length === 0 || ![...d3.changed, ...d3.created].some((f) => f.startsWith("shared/")));
 
-// 4: explicit instruction — the only private → shared door, and it's the user's words
+// 4: the toggle is the only mechanism — user flips to shared and asks to copy their note
 const findPages = (root) => {
   const out = [];
   const reserved = new Set(["profile.md", "index.md", "log.md", "AGENTS.md"]);
@@ -366,12 +329,12 @@ const findPages = (root) => {
   return out;
 };
 let snapD = snapshot();
-await conversation("conv4-partage-explicite", "private", [
-  "On reparle de la fête des récoltes du 20 septembre : note-la pour tout le monde.",
+await conversation("conv4-bascule-et-partage", "shared", [
+  "Recopie ma note privée sur la fête des récoltes dans le wiki partagé, pour tout le monde.",
 ]);
 let d4 = diff(snapD, snapshot());
 check("conv4: la fête est publiée dans /shared", findPages("shared").some((f) => stripAccents(fs.readFileSync(f, "utf8")).includes("recoltes")));
-check("conv4: la copie privée a été déplacée (plus de page privée fête)", !findPages("users/albert").some((f) => stripAccents(fs.readFileSync(f, "utf8")).includes("recoltes")));
+check("conv4: la date du 20 septembre est préservée", findPages("shared").some((f) => { const t = stripAccents(fs.readFileSync(f, "utf8")); return t.includes("recoltes") && (t.includes("20 septembre") || t.includes("2026-09-20") || t.includes("20/09")); }));
 check("conv4: journal partagé mis à jour", d4.changed.includes("shared/log.md"));
 
 // canary: marie's bundle untouched and never leaked
