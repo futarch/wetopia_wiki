@@ -61,8 +61,8 @@ One page per entity. Choose from exactly these eight types:
 | `Decision` | a choice that was made, and why |
 
 - Finer classification goes in `tags` (English, kebab-case), never in new
-  types. Never invent a type: use the closest fit and record a
-  `PROPOSITION` line in log.md if a new type seems needed.
+  types. Never invent a type: use the closest fit and note the suggestion
+  in log.md if a new type seems needed.
 
 ## 6. Frontmatter
 
@@ -131,28 +131,32 @@ One line per change, appended to the log.md of the bundle you wrote in:
 - 2026-08-24T10:12Z [human:albert · session:2026-08-24-a7bc] MAJ /shared/projects/compost.md — ajout du planning d'automne
 ```
 
-Verbs: `CRÉÉ`, `MAJ`, `RENOMMÉ`, `DÉPRÉCIÉ`, `PROPOSITION`.
+Verbs: `CRÉÉ`, `MAJ`, `RENOMMÉ`, `DÉPRÉCIÉ`.
 
 ## 10. Sharing and promotion
 
-The scope toggle is the mechanism. You never interrupt a conversation to
-propose sharing.
+The scope toggle decides where knowledge goes. You never judge what is
+communal — that judgment belongs to the user (in the moment) and to the
+nightly lint (after the fact).
 
-- Shared scope → write directly to shared, no ceremony.
-- Private scope → write to the private bundle. The user's words override
-  the default: « note ça pour tout le monde » means write to shared now.
-- Private scope, and something looks clearly communal but the user did not
-  say so → write it privately and add a `PROPOSITION` line to the private
-  log.md. Do not ask. Never move private content to shared without an
-  explicit instruction from its author.
+- Shared scope → write to shared, no ceremony.
+- Private scope → write to the private bundle, always; the app rejects any
+  other destination. A durable fact that sounds communal is still captured
+  — in the private bundle, where the nightly lint will find it. If the
+  user asks you to share something, invite them to switch the
+  conversation's scope.
+- Promotion is the only private → shared path: it moves an existing
+  private page verbatim into shared, carrying its sources, with a `MAJ`
+  line in both logs. Only on the user's explicit instruction naming the
+  page — typically while reviewing propositions.md.
 
-Review: the nightly lint compiles open `PROPOSITION` lines into the user's
-private `propositions.md` (link + one line on why it looks communal). At
-the start of a conversation, if that page has entries, mention it in one
-short sentence — then drop the subject unless the user engages. The user
-approves or refuses in conversation: approved pages move to shared carrying
-their sources (log `MAJ` in both bundles); refused entries are deleted and
-never re-proposed.
+Review: the nightly lint — not you — scans each private bundle for pages
+that look communal (they reference shared projects, people, places or
+events) and compiles candidates into that user's private propositions.md
+(link + one line on why). At the start of a conversation, if that page has
+entries, mention it in one short sentence — then drop the subject unless
+the user engages. Approved → promote; refused → recorded in
+propositions.md under « Refusées » and never proposed again.
 
 ## 11. Conversation conduct
 
@@ -169,8 +173,9 @@ never re-proposed.
 Report — in log.md and the lint report page — never silently fix:
 contradictions between pages, pages past `stale_after`, orphan pages
 (no inbound links), type and tag drift, duplicate entities, tasks past
-`due`. Compile open `PROPOSITION` lines into each user's private
-`propositions.md` (§10).
+`due`. Scan each private bundle for communal-looking pages and compile
+that user's private propositions.md (§10) — private-bundle analysis never
+appears anywhere except that user's own bundle.
 
 Fix mechanically: index completeness and accuracy, broken formatting,
 dead internal anchors.
@@ -181,6 +186,6 @@ Humans do that.
 ## 13. Changing these rules
 
 This charter is itself wiki content. Anyone may propose a change — a
-`Decision` page plus a `PROPOSITION` line in log.md. For now, both members
+`Decision` page (status draft) noted in log.md. For now, both members
 must agree; community governance replaces this rule when the community
 exists. The agent applies this file; it never edits it.
