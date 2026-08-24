@@ -41,6 +41,43 @@ serait un second écrivain en course sur les mêmes bundles.
 
 Ou n'importe quelle sonde externe (UptimeRobot, etc.) sur la même URL.
 
+## Le modèle : `-latest`, décidé, pas subi
+
+`WETOPIA_MODEL` reste sur `mistral-medium-latest`, et c'est un choix, pas un
+oubli. La question s'est posée d'épingler un snapshot daté pour figer le
+comportement qu'on a validé (Medium a été retenu sur preuves : Large
+brouillonnait et inventait des détails, Small échouait en scope privé).
+
+Le catalogue Mistral, relevé le 2026-08-24, tranche dans l'autre sens :
+
+| modèle | obsolescence annoncée |
+|---|---|
+| `mistral-medium-2505` | 2026-08-31 |
+| `mistral-medium-2508` | 2026-08-31 |
+| `mistral-medium-2604` | aucune |
+| `mistral-medium-latest` | aucune |
+
+Épingler aurait été précisément ce qui casse : un snapshot daté choisi il y a
+quelques mois cesserait de répondre à une date fixe, alors que l'alias n'a pas
+de date de péremption. Épingler échange un risque de **qualité** (le
+comportement peut dériver) contre un risque de **disponibilité** (l'app meurt
+un jour donné) — mauvais échange sans astreinte pour suivre les dépréciations.
+
+Le risque de dérive est par ailleurs contenu par construction : un nouveau
+modèle ne peut ni franchir la barrière privé/partagé, ni écrire hors scope, ni
+supprimer une page — les outils et la garde refusent, ce ne sont pas des
+consignes de prompt. Une dérive ferait varier la qualité, pas la sûreté.
+
+Les contre-mesures sont donc la détection, pas le gel :
+
+- `npm run test:agent` et `npm run test:lint` rejouent tout le contrat de
+  comportement contre le modèle courant, en une commande ;
+- chaque page porte `generated: { by: "wetopia-agent/<model-id>" }`, donc le
+  wiki enregistre lui-même quel modèle a écrit quoi.
+
+À revoir le jour où une vraie communauté et une astreinte existent : la
+reproductibilité vaudra alors le coût de suivre les dépréciations.
+
 ## Où vivent les transcripts
 
 pi écrit un transcript JSONL par conversation. Par défaut il les met dans
