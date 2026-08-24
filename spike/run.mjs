@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSessionContext } from "./guard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(__dirname, "data");
@@ -28,146 +29,127 @@ fs.rmSync(DATA, { recursive: true, force: true });
 fs.cpSync(SEED, DATA, { recursive: true });
 fs.copyFileSync(CHARTER, path.join(DATA, "shared", "AGENTS.md"));
 
-// ---------- bundle path enforcement (the app-side guard, not the prompt) ----------
-const ALLOWED_ROOTS = [path.join(DATA, "shared"), path.join(DATA, "users", USER)];
-let currentScope = "private";
-function resolveBundlePath(p, { forWrite = false } = {}) {
-  if (typeof p !== "string" || !p.startsWith("/")) {
-    throw new Error(`chemin invalide « ${p} » — utilise un chemin absolu de bundle, ex. /shared/index.md`);
-  }
-  const abs = path.resolve(DATA, "." + p);
-  if (!ALLOWED_ROOTS.some((r) => abs === r || abs.startsWith(r + path.sep))) {
-    throw new Error(`accès refusé : ${p}`);
-  }
-  if (currentScope === "shared" && p.startsWith("/users/")) {
-    throw new Error(
-      "conversation en scope partagé : les bundles privés sont inaccessibles (charte §3). " +
-      "Seul le contenu de /shared et de cette conversation existe ici."
-    );
-  }
-  if (forWrite && p === "/shared/AGENTS.md") {
-    throw new Error("AGENTS.md est protégé — la charte ne se modifie pas par l'agent (§13)");
-  }
-  if (forWrite && currentScope === "private" && p.startsWith("/shared/")) {
-    throw new Error(
-      "conversation en scope privé : toute écriture va dans /users/" + USER +
-      " (charte §10). Note ce contenu dans /users/" + USER +
-      " ; pour écrire dans le wiki partagé, l'utilisateur bascule la conversation en scope partagé."
-    );
-  }
-  return abs;
-}
+// ---------- per-session security context ----------
+// The guard itself lives in guard.mjs (one source of truth, shared with the app)
+// and has its own deterministic suite: `node guard.test.mjs`.
+const sessionContext = (scope) => createSessionContext({ dataRoot: DATA, user: USER, scope });
 
-// ---------- tools ----------
+// ---------- tools (built per session, bound to its security context) ----------
 const toolCalls = [];
 const ok = (text) => ({ content: [{ type: "text", text }], details: {} });
 const err = (e) => ({ content: [{ type: "text", text: `ERREUR: ${e.message}` }], details: {} });
 const stripAccents = (s) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
-const readPage = defineTool({
-  name: "read_page",
-  description:
-    "Lire une page du wiki. Chemin absolu de bundle, ex. /shared/index.md, /users/albert/profile.md.",
-  parameters: Type.Object({ path: Type.String({ description: "Chemin absolu de bundle" }) }),
-  execute: async (_id, { path: p }) => {
-    toolCalls.push(["read_page", p]);
-    try {
-      const abs = resolveBundlePath(p);
-      if (!fs.existsSync(abs)) return ok(`(page inexistante : ${p})`);
-      return ok(fs.readFileSync(abs, "utf8"));
-    } catch (e) { return err(e); }
-  },
-});
+function createWikiTools(ctx) {
+  const { resolveBundlePath, readRoots, user } = ctx;
 
-const searchTool = defineTool({
-  name: "search",
-  description:
-    "Recherche plein-texte (insensible aux accents et à la casse) dans les bundles accessibles. Retourne chemins et lignes correspondantes.",
-  parameters: Type.Object({ query: Type.String() }),
-  execute: async (_id, { query }) => {
-    toolCalls.push(["search", query]);
-    const q = stripAccents(query);
-    const hits = [];
-    const walk = (dir, bundle) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const abs = path.join(dir, entry.name);
-        if (entry.isDirectory()) walk(abs, bundle);
-        else if (entry.name.endsWith(".md")) {
-          const rel = "/" + path.relative(DATA, abs).split(path.sep).join("/");
-          const lines = fs.readFileSync(abs, "utf8").split("\n");
-          lines.forEach((line, i) => {
-            if (stripAccents(line).includes(q)) hits.push(`${rel}:${i + 1}: ${line.trim()}`);
-          });
+  const readPage = defineTool({
+    name: "read_page",
+    description:
+      "Lire une page du wiki. Chemin absolu de bundle, ex. /shared/index.md, /users/albert/profile.md.",
+    parameters: Type.Object({ path: Type.String({ description: "Chemin absolu de bundle" }) }),
+    execute: async (_id, { path: p }) => {
+      toolCalls.push(["read_page", p]);
+      try {
+        const abs = resolveBundlePath(p);
+        if (!fs.existsSync(abs)) return ok(`(page inexistante : ${p})`);
+        return ok(fs.readFileSync(abs, "utf8"));
+      } catch (e) { return err(e); }
+    },
+  });
+
+  const searchTool = defineTool({
+    name: "search",
+    description:
+      "Recherche plein-texte (insensible aux accents et à la casse) dans les bundles accessibles. Retourne chemins et lignes correspondantes.",
+    parameters: Type.Object({ query: Type.String() }),
+    execute: async (_id, { query }) => {
+      toolCalls.push(["search", query]);
+      const q = stripAccents(query);
+      const hits = [];
+      const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const abs = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(abs);
+          else if (entry.isFile() && entry.name.endsWith(".md")) {
+            const rel = "/" + path.relative(DATA, abs).split(path.sep).join("/");
+            fs.readFileSync(abs, "utf8").split("\n").forEach((line, i) => {
+              if (stripAccents(line).includes(q)) hits.push(`${rel}:${i + 1}: ${line.trim()}`);
+            });
+          }
         }
-      }
-    };
-    const roots = currentScope === "shared" ? [path.join(DATA, "shared")] : ALLOWED_ROOTS;
-    for (const root of roots) walk(root);
-    return ok(hits.length ? hits.slice(0, 30).join("\n") : "(aucun résultat)");
-  },
-});
+      };
+      for (const root of readRoots) if (fs.existsSync(root)) walk(root);
+      return ok(hits.length ? hits.slice(0, 30).join("\n") : "(aucun résultat)");
+    },
+  });
 
-const writePage = defineTool({
-  name: "write_page",
-  description:
-    "Créer ou remplacer une page (contenu complet, frontmatter inclus). Réservé aux bundles accessibles ; /shared/AGENTS.md est protégé.",
-  parameters: Type.Object({
-    path: Type.String({ description: "Chemin absolu de bundle" }),
-    content: Type.String({ description: "Contenu markdown complet de la page" }),
-  }),
-  execute: async (_id, { path: p, content }) => {
-    toolCalls.push(["write_page", p]);
-    try {
-      const abs = resolveBundlePath(p, { forWrite: true });
-      const isCreate = !fs.existsSync(abs);
-      let warning = "";
-      if (isCreate) {
-        const slug = (s) => stripAccents(s.replace(/\.md$/, "")).replace(/[^a-z]/g, "");
-        const target = slug(p.split("/").pop());
-        const similar = [];
-        const walk = (dir) => {
-          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const a = path.join(dir, entry.name);
-            if (entry.isDirectory()) walk(a);
-            else if (entry.name.endsWith(".md")) {
-              const s = slug(entry.name);
-              if (s && (s === target || s.startsWith(target) || target.startsWith(s))) {
-                similar.push("/" + path.relative(DATA, a).split(path.sep).join("/"));
+  const writePage = defineTool({
+    name: "write_page",
+    description:
+      "Créer ou remplacer une page (contenu complet, frontmatter inclus). Réservé aux bundles accessibles ; /shared/AGENTS.md est protégé.",
+    parameters: Type.Object({
+      path: Type.String({ description: "Chemin absolu de bundle" }),
+      content: Type.String({ description: "Contenu markdown complet de la page" }),
+    }),
+    execute: async (_id, { path: p, content }) => {
+      toolCalls.push(["write_page", p]);
+      try {
+        const abs = resolveBundlePath(p, { forWrite: true });
+        const isCreate = !fs.existsSync(abs);
+        let warning = "";
+        if (isCreate) {
+          const slug = (s) => stripAccents(s.replace(/\.md$/, "")).replace(/[^a-z]/g, "");
+          const target = slug(p.split("/").pop());
+          const similar = [];
+          const walk = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const a = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(a);
+              else if (entry.isFile() && entry.name.endsWith(".md")) {
+                const s = slug(entry.name);
+                if (s && (s === target || s.startsWith(target) || target.startsWith(s))) {
+                  similar.push("/" + path.relative(DATA, a).split(path.sep).join("/"));
+                }
               }
             }
+          };
+          // Scope-filtered: never leak private filenames into a shared conversation.
+          for (const root of readRoots) if (fs.existsSync(root)) walk(root);
+          if (similar.length) {
+            warning = `\nATTENTION : page(s) similaire(s) déjà existante(s) : ${similar.join(", ")} — si c'est le même sujet, mets-la à jour au lieu de créer un doublon (charte §8).`;
           }
-        };
-        const warnRoots = currentScope === "shared" ? [path.join(DATA, "shared")] : ALLOWED_ROOTS;
-        for (const root of warnRoots) walk(root);
-        if (similar.length) {
-          warning = `\nATTENTION : page(s) similaire(s) déjà existante(s) : ${similar.join(", ")} — si c'est le même sujet, mets-la à jour ou partage-la au lieu de créer un doublon (charte §8).`;
         }
-      }
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, content.endsWith("\n") ? content : content + "\n");
-      return ok(`écrit : ${p}${warning}`);
-    } catch (e) { return err(e); }
-  },
-});
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content.endsWith("\n") ? content : content + "\n");
+        return ok(`écrit : ${p}${warning}`);
+      } catch (e) { return err(e); }
+    },
+  });
 
-const appendLog = defineTool({
-  name: "append_log",
-  description:
-    "Ajouter une ligne à un journal (log.md) — jamais de réécriture. path doit se terminer par log.md.",
-  parameters: Type.Object({
-    path: Type.String({ description: "ex. /shared/log.md ou /users/albert/log.md" }),
-    line: Type.String({ description: "La ligne de journal, format de la charte §9" }),
-  }),
-  execute: async (_id, { path: p, line }) => {
-    toolCalls.push(["append_log", p]);
-    try {
-      if (!p.endsWith("log.md")) throw new Error("append_log ne s'applique qu'aux fichiers log.md");
-      const abs = resolveBundlePath(p, { forWrite: true });
-      fs.appendFileSync(abs, (line.startsWith("- ") ? line : `- ${line}`) + "\n");
-      return ok(`journal mis à jour : ${p}`);
-    } catch (e) { return err(e); }
-  },
-});
+  const appendLog = defineTool({
+    name: "append_log",
+    description:
+      "Ajouter une ligne à un journal (log.md) — jamais de réécriture. path doit se terminer par /log.md.",
+    parameters: Type.Object({
+      path: Type.String({ description: "ex. /shared/log.md ou /users/albert/log.md" }),
+      line: Type.String({ description: "La ligne de journal, format de la charte §9" }),
+    }),
+    execute: async (_id, { path: p, line }) => {
+      toolCalls.push(["append_log", p]);
+      try {
+        const abs = resolveBundlePath(p, { forWrite: true });
+        if (path.basename(abs) !== "log.md") {
+          throw new Error("append_log ne s'applique qu'aux fichiers nommés log.md");
+        }
+        fs.appendFileSync(abs, (line.startsWith("- ") ? line : `- ${line}`) + "\n");
+        return ok(`journal mis à jour : ${p}`);
+      } catch (e) { return err(e); }
+    },
+  });
+
+  return [readPage, searchTool, writePage, appendLog];
+}
 
 // ---------- system prompt: charter + runtime context ----------
 const charter = fs.readFileSync(CHARTER, "utf8");
@@ -214,21 +196,27 @@ const read = (rel) => { try { return fs.readFileSync(path.join(DATA, rel), "utf8
 const checks = [];
 const check = (name, cond) => { checks.push([name, !!cond]); };
 
-// ---------- enforcement unit tests (no model involved) ----------
+const guardAsyncChecks = [];
+// ---------- guard regression suite runs separately (deterministic, no API key) ----------
+// See guard.test.mjs — 30 checks incl. every bypass payload from the pre-build audit.
 {
-  const expectThrow = (fn) => { try { fn(); return false; } catch { return true; } };
-  check("guard: lire /users/marie/* refusé", expectThrow(() => resolveBundlePath("/users/marie/secret.md")));
-  check("guard: écrire /users/marie/* refusé", expectThrow(() => resolveBundlePath("/users/marie/x.md", { forWrite: true })));
-  check("guard: écrire /shared/AGENTS.md refusé", expectThrow(() => resolveBundlePath("/shared/AGENTS.md", { forWrite: true })));
-  check("guard: traversée ../.. refusée", expectThrow(() => resolveBundlePath("/shared/../../etc/passwd")));
-  check("guard: /shared/index.md autorisé", !expectThrow(() => resolveBundlePath("/shared/index.md")));
-  currentScope = "private";
-  check("guard: écrire /shared en scope privé refusé", expectThrow(() => resolveBundlePath("/shared/x.md", { forWrite: true })));
-  check("guard: lire /users/albert en scope privé autorisé", !expectThrow(() => resolveBundlePath("/users/albert/profile.md")));
-  currentScope = "shared";
-  check("guard: écrire /shared en scope partagé autorisé", !expectThrow(() => resolveBundlePath("/shared/x.md", { forWrite: true })));
-  check("guard: lire /users/albert en scope partagé REFUSÉ (barrière)", expectThrow(() => resolveBundlePath("/users/albert/profile.md")));
+  const [, , , appendLogTool] = createWikiTools(sessionContext("private"));
+  const scratchDir = path.join(DATA, "users", USER, ".guardtest");
+  fs.mkdirSync(scratchDir, { recursive: true });
+  const call = async (p) => {
+    const r = await appendLogTool.execute("t", { path: p, line: "- test" });
+    return r.content[0].text.startsWith("ERREUR");
+  };
+  guardAsyncChecks.push(
+    call("/users/albert/blog.md").then((refused) => check("outil: append_log refuse blog.md (basename exact)", refused)),
+    call("/users/albert/.guardtest/log.md").then((refused) => {
+      check("outil: append_log accepte log.md", !refused);
+      fs.rmSync(scratchDir, { recursive: true, force: true });
+    }),
+  );
 }
+
+await Promise.all(guardAsyncChecks);
 
 // ---------- model & runtime ----------
 const model = getModel("mistral", MODEL_ID);
@@ -257,8 +245,10 @@ const resourceLoader = (scope, sessionId) => ({
 const transcripts = {};
 async function conversation(name, scope, prompts) {
   console.log(`\n${"=".repeat(70)}\n== ${name} (scope: ${scope}, model: ${MODEL_ID})\n${"=".repeat(70)}`);
-  currentScope = scope;
   transcripts[name] = "";
+  // Per-session security context + tools bound to it (no ambient scope).
+  const ctx = sessionContext(scope);
+  const wikiTools = createWikiTools(ctx);
   const { session } = await createAgentSession({
     cwd: DATA,
     agentDir: path.join(__dirname, ".pi-agent"),
@@ -267,7 +257,7 @@ async function conversation(name, scope, prompts) {
     modelRuntime,
     resourceLoader: resourceLoader(scope, name),
     tools: ["read_page", "search", "write_page", "append_log"],
-    customTools: [readPage, searchTool, writePage, appendLog],
+    customTools: wikiTools,
     sessionManager: SessionManager.inMemory(DATA),
     settingsManager,
   });
