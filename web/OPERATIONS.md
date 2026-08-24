@@ -142,6 +142,25 @@ déclarerait en bonne santé. Elle est lue dans le journal partagé du wiki
 restaurations. Vérifié par un test : après destruction du disque et
 restauration, la santé du lint est toujours connue.
 
+## Le déploiement en place
+
+App `wetopia-node` (Paris, 1×XS, autoscaling coupé), add-ons `wetopia-postgres`
+et `wetopia-cellar` liés, bucket `wetopia-bundles`.
+URL : https://app-6f9ff783-560f-47e2-bf64-3c7f8a85a208.cleverapps.io
+
+Trois pièges rencontrés, à connaître avant d'y retoucher :
+
+1. **`APP_FOLDER` ne déplace que l'installation.** Le hook de build et la
+   commande de lancement s'exécutent à la **racine du dépôt** : d'où
+   `CC_POST_BUILD_HOOK="cd web && npm run build"` et
+   `CC_RUN_COMMAND="cd web && npm run start"`. Idem pour `clevercloud/cron.json`,
+   qui doit être à la racine.
+2. **`next build` ne tient pas dans une XS** — il s'est fait tuer par l'OOM.
+   Réglé par une instance de build dédiée (`clever scale --build-flavor M`),
+   facturée seulement pendant le build ; l'app reste en XS.
+3. **`typescript` doit être en `dependencies`** (le build type-check), et
+   `playwright` en `devDependencies` (il n'a rien à faire en production).
+
 ## Déploiement (Clever Cloud)
 
 - **Un seul écrivain** : déploiement *stop-then-start* (pas de rolling),
