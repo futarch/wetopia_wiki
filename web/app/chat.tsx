@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -10,72 +10,68 @@ import {
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import Markdown from "react-markdown";
+import { useSession, signOut } from "../lib/auth-client.ts";
+import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
+import SignIn from "./sign-in.tsx";
 
 type Scope = "private" | "shared";
-type ThreadRow = { id: string; title?: string; workspacePath?: string };
-
-const scopeOf = (t: ThreadRow): Scope => (t.workspacePath?.endsWith("shared") ? "shared" : "private");
 
 const SCOPE_HINT: Record<Scope, string> = {
-  private: "L'agent voit le wiki partagé et tes notes privées. Il n'écrit que chez toi.",
+  private: "L'agent lit le wiki partagé et tes notes privées. Il n'écrit que chez toi.",
   shared: "L'agent ne voit que le wiki partagé. Ce que tu dis ici peut devenir une page pour tout le monde.",
 };
 
-/** Assistant text rendered as markdown — wiki links included. */
 function MarkdownText() {
   const { text } = useMessagePartText();
   return <Markdown>{text}</Markdown>;
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  read_page: "lecture d'une page",
+  search: "recherche dans le wiki",
+  write_page: "écriture d'une page",
+  append_log: "mise à jour du journal",
+};
+
 function ToolCall({ toolName }: { toolName: string }) {
-  const label: Record<string, string> = {
-    read_page: "lecture d'une page",
-    search: "recherche dans le wiki",
-    write_page: "écriture d'une page",
-    append_log: "mise à jour du journal",
-  };
   return (
     <div className="tool">
-      <code>· {label[toolName] ?? toolName}</code>
+      <code>· {TOOL_LABELS[toolName] ?? toolName}</code>
     </div>
   );
 }
 
-function Messages() {
-  return (
-    <>
-      <ThreadPrimitive.Messages
-        components={{
-          UserMessage: () => (
-            <div className="row" data-role="user">
-              <div className="bubble">
-                <MessagePrimitive.Parts />
-              </div>
-            </div>
-          ),
-          AssistantMessage: () => (
-            <div className="row" data-role="assistant">
-              <div className="bubble">
-                <MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCall } }} />
-              </div>
-            </div>
-          ),
-        }}
-      />
-    </>
-  );
-}
-
-function Composer({ scope }: { scope: Scope }) {
+function Composer({ scope, dictation }: { scope: Scope; dictation: boolean }) {
   return (
     <div className="composer">
       <ComposerPrimitive.Root asChild>
         <form>
-          <ComposerPrimitive.Input
-            autoFocus
-            rows={1}
-            placeholder={scope === "shared" ? "Écrire dans le wiki partagé…" : "Note privée, question…"}
-          />
+          <div className="input-wrap">
+            <ComposerPrimitive.Input
+              autoFocus
+              rows={1}
+              placeholder={scope === "shared" ? "Écrire dans le wiki partagé…" : "Note privée, question…"}
+            />
+            <ComposerPrimitive.DictationTranscript asChild>
+              <span className="transcript" />
+            </ComposerPrimitive.DictationTranscript>
+          </div>
+
+          {dictation && (
+            <>
+              <ComposerPrimitive.Dictate asChild>
+                <button type="button" className="mic" title="Dicter" aria-label="Dicter">
+                  🎙
+                </button>
+              </ComposerPrimitive.Dictate>
+              <ComposerPrimitive.StopDictation asChild>
+                <button type="button" className="mic" data-recording="true" title="Arrêter la dictée" aria-label="Arrêter la dictée">
+                  ⏹
+                </button>
+              </ComposerPrimitive.StopDictation>
+            </>
+          )}
+
           <ThreadPrimitive.If running={false}>
             <ComposerPrimitive.Send asChild>
               <button type="submit">Envoyer</button>
@@ -99,18 +95,13 @@ function Composer({ scope }: { scope: Scope }) {
 
 function Conversation({ threadId, scope }: { threadId: string; scope: Scope }) {
   const client = useMemo(() => createPiHttpClient({ baseUrl: "/api/pi" }), []);
-  const runtime = usePiRuntime({ client, threadId });
+  const dictation = useMemo(() => (isDictationSupported() ? new WetopiaDictationAdapter() : undefined), []);
+  const runtime = usePiRuntime({ client, threadId, adapters: dictation ? { dictation } : undefined });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root asChild>
-        <div className="chat">
-          <div className="chat-head">
-            <span className="badge" data-scope={scope}>
-              {scope === "shared" ? "Partagé" : "Privé"}
-            </span>
-            <span className="sub">{SCOPE_HINT[scope]}</span>
-          </div>
+        <div className="conv">
           <ThreadPrimitive.Viewport asChild>
             <div className="viewport">
               <ThreadPrimitive.Empty>
@@ -119,10 +110,29 @@ function Conversation({ threadId, scope }: { threadId: string; scope: Scope }) {
                   {SCOPE_HINT[scope]}
                 </div>
               </ThreadPrimitive.Empty>
-              <Messages />
+              <ThreadPrimitive.Messages
+                components={{
+                  UserMessage: () => (
+                    <div className="row" data-role="user">
+                      <div className="bubble">
+                        <MessagePrimitive.Parts />
+                      </div>
+                    </div>
+                  ),
+                  AssistantMessage: () => (
+                    <div className="row" data-role="assistant">
+                      <div className="bubble">
+                        <MessagePrimitive.Parts
+                          components={{ Text: MarkdownText, tools: { Fallback: ToolCall } }}
+                        />
+                      </div>
+                    </div>
+                  ),
+                }}
+              />
             </div>
           </ThreadPrimitive.Viewport>
-          <Composer scope={scope} />
+          <Composer scope={scope} dictation={!!dictation} />
         </div>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
@@ -130,117 +140,82 @@ function Conversation({ threadId, scope }: { threadId: string; scope: Scope }) {
 }
 
 export default function Chat() {
-  const [threads, setThreads] = useState<ThreadRow[]>([]);
-  const [active, setActive] = useState<ThreadRow | null>(null);
-  const [newScope, setNewScope] = useState<Scope>("private");
-  const [creating, setCreating] = useState(false);
+  const { data: session, isPending } = useSession();
+  const [scope, setScope] = useState<Scope>("private");
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/pi/threads");
-      if (!res.ok) throw new Error(`liste des conversations : ${res.status}`);
-      const rows: ThreadRow[] = await res.json();
-      setThreads(rows);
-      setError(null);
-      return rows;
-    } catch (e) {
-      setError((e as Error).message);
-      return [];
-    }
-  }, []);
-
+  // One conversation per visit: opening or reloading the page starts a fresh
+  // one, and switching scope starts another (scope is fixed for a conversation
+  // by design — it decides which bundles the agent can even see).
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!session) return;
+    let cancelled = false;
+    setBusy(true);
+    setThreadId(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/pi/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scope }),
+        });
+        if (!res.ok) throw new Error(`création de la conversation : ${res.status}`);
+        const snap = await res.json();
+        if (!cancelled) {
+          setThreadId(snap.metadata.id);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, session?.user?.id]);
 
-  const create = async () => {
-    setCreating(true);
-    try {
-      // The scope is a request, not a path: the server decides which workspace
-      // (and therefore which bundles) the conversation may ever touch.
-      const res = await fetch("/api/pi/threads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ scope: newScope }),
-      });
-      if (!res.ok) throw new Error(`création : ${res.status}`);
-      const snap = await res.json();
-      const row: ThreadRow = { id: snap.metadata.id, title: snap.metadata.title, workspacePath: snap.metadata.workspacePath };
-      setActive(row);
-      await refresh();
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const grouped = useMemo(
-    () => ({
-      shared: threads.filter((t) => scopeOf(t) === "shared"),
-      private: threads.filter((t) => scopeOf(t) === "private"),
-    }),
-    [threads],
-  );
+  if (isPending) return <div className="boot">…</div>;
+  if (!session) return <SignIn />;
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <header className="topbar">
         <div className="brand">
-          <h1>Wetopia</h1>
+          <strong>Wetopia</strong>
           <span>Le wiki de la communauté</span>
         </div>
 
-        <div className="newbox">
-          <div className="scope-switch" role="group" aria-label="Portée de la nouvelle conversation">
-            <button type="button" data-on={newScope === "private"} onClick={() => setNewScope("private")}>
-              Privé
-            </button>
-            <button type="button" data-on={newScope === "shared"} onClick={() => setNewScope("shared")}>
-              Partagé
-            </button>
-          </div>
-          <button className="newbtn" onClick={create} disabled={creating}>
-            {creating ? "Création…" : "Nouvelle conversation"}
+        <div className="scope-switch" role="group" aria-label="Portée de la conversation">
+          <button type="button" data-on={scope === "private"} onClick={() => setScope("private")}>
+            Privé
           </button>
-          <p className="scope-hint">{SCOPE_HINT[newScope]}</p>
+          <button type="button" data-on={scope === "shared"} onClick={() => setScope("shared")}>
+            Partagé
+          </button>
         </div>
 
-        <nav className="threads">
-          {(["shared", "private"] as const).map((s) =>
-            grouped[s].length ? (
-              <div key={s}>
-                <h2>{s === "shared" ? "Partagées" : "Privées"}</h2>
-                {grouped[s].map((t) => (
-                  <button
-                    key={t.id}
-                    className="thread-item"
-                    data-active={active?.id === t.id}
-                    onClick={() => setActive(t)}
-                  >
-                    <span className="dot" data-scope={s} />
-                    <span className="thread-title">{t.title || "Sans titre"}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null,
-          )}
-          {error && <p className="scope-hint">⚠ {error}</p>}
-        </nav>
-      </aside>
+        <div className="who">
+          <span title={session.user.email ?? ""}>{session.user.name || session.user.email}</span>
+          <button type="button" className="link" onClick={() => signOut()}>
+            Se déconnecter
+          </button>
+        </div>
+      </header>
 
-      {active ? (
-        <Conversation key={active.id} threadId={active.id} scope={scopeOf(active)} />
+      <p className="scope-line" data-scope={scope}>
+        {SCOPE_HINT[scope]}
+      </p>
+
+      {error && <p className="error">⚠ {error}</p>}
+
+      {threadId ? (
+        <Conversation key={threadId} threadId={threadId} scope={scope} />
       ) : (
-        <div className="chat">
-          <div className="empty">
-            <strong>Bienvenue</strong>
-            Choisis une portée puis démarre une conversation. Ce que tu écris en privé reste privé ; le wiki partagé ne
-            reçoit que ce que tu dis dans une conversation partagée.
-          </div>
-        </div>
+        <div className="boot">{busy ? "Ouverture de la conversation…" : "…"}</div>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 // The route layer react-pi's browser client expects (see its httpClient header).
 // Every handler resolves identity server-side and refuses to touch a thread
 // that does not belong to the caller.
-import { currentUser } from "../../../../lib/server/auth.ts";
+import { currentViewer } from "../../../../lib/server/auth.ts";
 import { describeWorkspace, resolveWorkspace, supervisor } from "../../../../lib/server/wetopia-server.ts";
 
 export const runtime = "nodejs";
@@ -31,13 +31,17 @@ async function handler(req: Request, ctx: { params: Promise<{ path?: string[] }>
     }
   };
 
+  // Every route is gated: no session, no wiki.
+  const viewer = await currentViewer(req.headers);
+  if (!viewer) return oops(401, "non authentifié");
+  const user = viewer.wikiId;
+
   let sup: any;
   try {
     sup = await supervisor();
   } catch (e) {
     return oops(503, `démarrage impossible : ${(e as Error).message}`);
   }
-  const user = currentUser(req);
 
   try {
     // GET /models
@@ -52,14 +56,14 @@ async function handler(req: Request, ctx: { params: Promise<{ path?: string[] }>
       if (method === "GET") {
         const all = [];
         for (const scope of ["private", "shared"] as const) {
-          all.push(...(await sup.listThreads({ workspacePath: resolveWorkspace(user, scope) })));
+          all.push(...(await sup.listThreads({ workspacePath: await resolveWorkspace(user, scope) })));
         }
         return json(all);
       }
       if (method === "POST") {
         const input = await body();
         // The client may ask for a scope; it may NEVER name a workspace path.
-        const workspacePath = resolveWorkspace(user, input.scope ?? "private");
+        const workspacePath = await resolveWorkspace(user, input.scope ?? "private");
         return json(
           await sup.createThread({
             workspacePath,

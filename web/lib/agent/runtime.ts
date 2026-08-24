@@ -13,8 +13,9 @@ import { SHARED_REPO, repoLayout, userRepo } from "../wiki.ts";
 export interface Wetopia {
   store: WikiStore;
   dataRoot: string;
-  users: string[];
   charter: string;
+  /** Open (restore or create) a user's private bundle. Idempotent. */
+  ensureUser: (wikiId: string) => Promise<void>;
 }
 
 const KEY = Symbol.for("wetopia.runtime");
@@ -26,8 +27,8 @@ export interface BootOptions {
   /** Durable bundle store. Defaults to a local directory (dev/tests). */
   store?: BundleStore;
   bundleDir?: string;
-  /** Users whose private bundles exist. */
-  users: string[];
+  /** Private bundles to open at boot. Others are opened on first sign-in. */
+  users?: string[];
   /** Directory holding the initial content for a fresh install. */
   seedDir: string;
   keepBundles?: number;
@@ -59,8 +60,24 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
     },
   });
 
-  const repos = [SHARED_REPO, ...o.users.map(userRepo)];
+  const opened = new Set<string>();
+  const repos = [SHARED_REPO, ...(o.users ?? []).map(userRepo)];
   await store.open(repos);
+  for (const r of repos) opened.add(r);
+
+  // A private bundle is created the first time its owner signs in, so accounts
+  // are not a fixed list baked into the deployment.
+  let chain: Promise<void> = Promise.resolve();
+  const ensureUser = (wikiId: string): Promise<void> => {
+    const repo = userRepo(wikiId);
+    if (opened.has(repo)) return Promise.resolve();
+    chain = chain.then(async () => {
+      if (opened.has(repo)) return;
+      await store.open([repo]);
+      opened.add(repo);
+    });
+    return chain;
+  };
 
   const charterFile = path.join(o.dataRoot, "shared", "AGENTS.md");
   if (!fs.existsSync(charterFile)) throw new Error(`charte absente du bundle partagé : ${charterFile}`);
@@ -68,8 +85,8 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
   const runtime: Wetopia = {
     store,
     dataRoot: o.dataRoot,
-    users: o.users,
     charter: fs.readFileSync(charterFile, "utf8"),
+    ensureUser,
   };
   slot[KEY] = runtime;
   return runtime;
