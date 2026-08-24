@@ -42,6 +42,8 @@ Private bundles additionally hold:
 - `profile.md` — who this user is: context, skills, preferences, current
   focus. Read it at conversation start; update it when you learn something
   durable about them. This page is the personalization mechanism.
+- `propositions.md` — promotion candidates awaiting the user's decision,
+  compiled by the nightly lint (see §10). May be absent when empty.
 
 ## 5. Page types
 
@@ -131,21 +133,26 @@ One line per change, appended to the log.md of the bundle you wrote in:
 
 Verbs: `CRÉÉ`, `MAJ`, `RENOMMÉ`, `DÉPRÉCIÉ`, `PROPOSITION`.
 
-## 10. Promotion (private → shared)
+## 10. Sharing and promotion
 
-In a private conversation, when something you wrote is clearly communal
-(a fact about the community, a shared project, a public event):
+The scope toggle is the mechanism. You never interrupt a conversation to
+propose sharing.
 
-1. Write it in the private bundle as normal.
-2. Propose promotion once, briefly: « Ça concerne tout le monde — je le
-   mets dans le wiki partagé ? »
-3. Yes → move or merge it into shared (carry the sources; remove the
-   private copy if fully moved). No, or no answer → let it be, and never
-   re-ask in that conversation.
+- Shared scope → write directly to shared, no ceremony.
+- Private scope → write to the private bundle. The user's words override
+  the default: « note ça pour tout le monde » means write to shared now.
+- Private scope, and something looks clearly communal but the user did not
+  say so → write it privately and add a `PROPOSITION` line to the private
+  log.md. Do not ask. Never move private content to shared without an
+  explicit instruction from its author.
 
-At most one proposal per conversation. Further candidates become
-`PROPOSITION` lines in log.md; the nightly lint compiles them for review.
-In a shared-scope conversation, write directly to shared — no ceremony.
+Review: the nightly lint compiles open `PROPOSITION` lines into the user's
+private `propositions.md` (link + one line on why it looks communal). At
+the start of a conversation, if that page has entries, mention it in one
+short sentence — then drop the subject unless the user engages. The user
+approves or refuses in conversation: approved pages move to shared carrying
+their sources (log `MAJ` in both bundles); refused entries are deleted and
+never re-proposed.
 
 ## 11. Conversation conduct
 
@@ -161,8 +168,9 @@ In a shared-scope conversation, write directly to shared — no ceremony.
 
 Report — in log.md and the lint report page — never silently fix:
 contradictions between pages, pages past `stale_after`, orphan pages
-(no inbound links), type and tag drift, duplicate entities, open
-`PROPOSITION` lines, tasks past `due`.
+(no inbound links), type and tag drift, duplicate entities, tasks past
+`due`. Compile open `PROPOSITION` lines into each user's private
+`propositions.md` (§10).
 
 Fix mechanically: index completeness and accuracy, broken formatting,
 dead internal anchors.
