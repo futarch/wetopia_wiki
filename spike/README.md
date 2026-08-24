@@ -14,15 +14,15 @@ MISTRAL_API_KEY=... node run.mjs [model-id]   # default: mistral-medium-latest
 Resets `data/` from `seed-data/` each run, injects the charter as system
 prompt, runs four sessions — shared-scope read+update, private-scope
 communal fact (must stay private), private-scope task query, and the
-toggle flow (user switches to shared scope and asks to copy their private
-note) — then prints a 22-check scorecard: path-guard unit tests, charter
-compliance, and privacy canaries.
+toggle flow (user re-states a fact in a shared-scope conversation) — then
+prints a 27-check scorecard: path-guard unit tests, charter compliance,
+and privacy canaries on both sides of the barrier.
 
 ## Results (2026-08-24, pi-coding-agent 0.84.3, final toggle-only design)
 
 | model | checks | notes |
 |---|---|---|
-| mistral-medium-latest | 22/22 | consistent across all design iterations; executes, never embellishes |
+| mistral-medium-latest | 27/27 | consistent across all design iterations; executes, never embellishes |
 | mistral-large-latest | variance on earlier variants | drafts instead of acting; hallucinated event details |
 | mistral-small-latest | failed earlier variant | dropped private-scope duties; out |
 
@@ -34,14 +34,18 @@ also the reliable one.
 1. **`tools: []` disables custom tools too** — pass the allowlist of custom
    tool names, else the model silently gets zero tools and hallucinates
    file writes.
-2. **The toggle is the only sharing mechanism.** Shared scope writes
-   shared; private scope writes private (absolute tool-level guard). To
-   share something, the user switches scope and says so — reads cross the
-   user's own bundles, so « recopie ma note privée » just works. No agent
-   judgment, no promotion machinery, no scanning of private content, ever.
-   Charter rule that keeps it tight: in shared scope, private content
-   enters shared pages only when the user brings it up — never on the
-   agent's initiative.
+2. **Scope is an information barrier, not a write destination.** Private
+   scope: read shared + own private, write private only. Shared scope:
+   read AND write shared only — private bundles do not exist for the
+   agent (reads, search, and even similarity warnings are scope-filtered).
+   "Questions become pages" is therefore leak-free by construction: a
+   shared page can only contain what shared pages and the conversation
+   provide, and the human is the only declassifier — sharing = saying it
+   in a shared-scope conversation. A conversation never flips private →
+   shared (its context would carry private reads across). Personalization
+   in shared scope uses the user's shared Person page, not their private
+   profile. Verified live: a canary secret in the private profile never
+   reached shared conversations or shared files.
 3. **The capture rule must be explicit.** With shared locked in private
    scope, models dropped communal facts instead of noting them privately.
    Guard error message + runtime context now both say: capture it privately

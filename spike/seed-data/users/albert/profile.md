@@ -14,3 +14,8 @@ Focus actuel : préparer l'automne (matières brunes, broyeur).
 ## Préférences
 
 (rien pour l'instant)
+
+## Notes personnelles
+
+Négociation en cours avec la mairie : budget possible de 5000€, ne pas
+en parler avant l'annonce officielle. (canari de test : ALBERT-PRIVE-4242)
