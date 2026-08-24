@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { LocalBundleStore, type BundleStore } from "../store/bundleStore.ts";
+import { s3StoreFromEnv } from "../store/s3BundleStore.ts";
 import { WikiStore, type OpenReport } from "../store/wikiStore.ts";
 import { SHARED_REPO, repoLayout, userRepo } from "../wiki.ts";
 
@@ -37,15 +38,38 @@ export interface BootOptions {
   keepBundles?: number;
 }
 
+/**
+ * Cellar when it is configured, a local directory otherwise — the same split
+ * as Postgres/SQLite for auth, so the app runs identically on a laptop and in
+ * production without a second code path.
+ */
+function defaultBundleStore(localDir: string): BundleStore {
+  const s3 = s3StoreFromEnv();
+  if (s3) {
+    console.log("[wetopia] bundles : Cellar (S3)");
+    return s3;
+  }
+  console.log(`[wetopia] bundles : répertoire local ${localDir}`);
+  return new LocalBundleStore(localDir);
+}
+
 /** Restore (or create) every bundle and pin the runtime. Idempotent per process. */
 export async function boot(o: BootOptions): Promise<Wetopia> {
   const existing = slot[KEY];
   if (existing) return existing;
 
   const seedShared = path.join(o.seedDir, "shared");
+  const bundleStore = o.store ?? defaultBundleStore(o.bundleDir ?? path.join(o.dataRoot, "..", "bundles"));
+
+  // Reach the durable store before accepting a single write: a wiki that booted
+  // happily onto an unreachable bucket would acknowledge writes it cannot keep.
+  if ("check" in bundleStore && typeof bundleStore.check === "function") {
+    await (bundleStore.check as () => Promise<void>)();
+  }
+
   const store = new WikiStore({
     workDir: o.dataRoot,
-    store: o.store ?? new LocalBundleStore(o.bundleDir ?? path.join(o.dataRoot, "..", "bundles")),
+    store: bundleStore,
     keepBundles: o.keepBundles ?? 30,
     layout: repoLayout,
     seed: (repo, dir) => {

@@ -79,8 +79,18 @@ restauration, la santé du lint est toujours connue.
   autoscaling **désactivé**. Deux instances = deux files = deux écrivains.
 - Disque éphémère : rien à conserver hors des bundles.
 - Postgres pour l'auth uniquement (`DATABASE_URL`).
-- Cellar (S3) pour les bundles — voir `lib/store/bundleStore.ts` (le driver
-  local sert de référence : même espace de clés, même tri, même `fetch`/`prune`).
+- Cellar (S3) pour les bundles. Lier l'add-on Cellar à l'app (Clever Cloud
+  injecte `CELLAR_ADDON_HOST/KEY_ID/KEY_SECRET`) puis créer le bucket et le
+  nommer dans `WETOPIA_BUNDLE_BUCKET`. Sans ces variables, l'app retombe sur
+  un répertoire local — visible dans les logs au démarrage
+  (`[wetopia] bundles : …`).
+
+  Le démarrage **échoue franchement** si le bucket est injoignable, plutôt que
+  d'accepter des écritures qu'il ne pourrait pas conserver :
+  `magasin de bundles injoignable (bucket « … »)`.
+
+  Autre fournisseur S3 (Scaleway, MinIO) : `WETOPIA_S3_ENDPOINT`,
+  `WETOPIA_S3_KEY_ID`, `WETOPIA_S3_KEY_SECRET`, `WETOPIA_S3_REGION`.
 
 ## En cas de panne
 

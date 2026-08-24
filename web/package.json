@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types lib/guard.test.ts && node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/lint/lint.test.ts && node --experimental-strip-types lib/monitor/health.test.ts",
+    "test": "node --experimental-strip-types lib/guard.test.ts && node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/lint/lint.test.ts && node --experimental-strip-types lib/monitor/health.test.ts && node --experimental-strip-types lib/store/s3.test.ts",
     "test:store": "node --experimental-strip-types lib/store/store.test.ts",
     "dev": "next dev",
     "build": "next build",
@@ -16,6 +16,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.16",
     "@assistant-ui/react-pi": "^0.0.19",
+    "@aws-sdk/client-s3": "^3.1117.0",
     "@earendil-works/pi-ai": "^0.84.3",
     "@earendil-works/pi-coding-agent": "^0.84.3",
     "better-auth": "^1.7.1",
