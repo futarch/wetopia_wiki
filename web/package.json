@@ -8,7 +8,7 @@
     "test:store": "node --experimental-strip-types lib/store/store.test.ts",
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-8080}",
     "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts",
     "check:ui": "node lib/ui.check.mjs",
     "test:lint": "node --experimental-strip-types lib/lint/lint.integration.test.ts"
@@ -32,5 +32,8 @@
   },
   "devDependencies": {
     "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

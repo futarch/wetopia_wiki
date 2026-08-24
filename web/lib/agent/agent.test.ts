@@ -40,7 +40,7 @@ if (!process.env.MISTRAL_API_KEY) {
   console.error("MISTRAL_API_KEY manquant");
   process.exit(1);
 }
-const model = getModel("mistral", MODEL_ID);
+const model = getModel("mistral", MODEL_ID as Parameters<typeof getModel>[1]);
 const modelRuntime = await ModelRuntime.create({
   authPath: path.join(root, ".pi-agent", "auth.json"),
   modelsPath: path.join(root, ".pi-agent", "models.json"),

@@ -33,7 +33,10 @@ export function ready(): Promise<void> {
       });
       await (modelRuntime as any).setRuntimeApiKey?.("mistral", apiKey);
 
-      const model = getModel("mistral", config.modelId);
+      // The SDK types model ids as a literal union of its bundled catalogue.
+      // Ours is deployment configuration read at runtime, so the widening is
+      // deliberate — an unknown id is caught on the next line, not by the type.
+      const model = getModel("mistral", config.modelId as Parameters<typeof getModel>[1]);
       if (!model) throw new Error(`modèle inconnu : ${config.modelId}`);
 
       // The supervisor's options are fixed by this first call; the workspace of

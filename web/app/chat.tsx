@@ -10,7 +10,7 @@ import {
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import Markdown from "react-markdown";
-import { useSession, signOut } from "../lib/auth-client.ts";
+import { useViewer, signOut } from "../lib/auth-client.ts";
 import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
 import SignIn from "./sign-in.tsx";
 
@@ -140,7 +140,7 @@ function Conversation({ threadId, scope }: { threadId: string; scope: Scope }) {
 }
 
 export default function Chat() {
-  const { data: session, isPending } = useSession();
+  const { viewer, isPending } = useViewer();
   const [scope, setScope] = useState<Scope>("private");
   const [threadId, setThreadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,7 +150,7 @@ export default function Chat() {
   // one, and switching scope starts another (scope is fixed for a conversation
   // by design — it decides which bundles the agent can even see).
   useEffect(() => {
-    if (!session) return;
+    if (!viewer) return;
     let cancelled = false;
     setBusy(true);
     setThreadId(null);
@@ -176,10 +176,10 @@ export default function Chat() {
     return () => {
       cancelled = true;
     };
-  }, [scope, session?.user?.id]);
+  }, [scope, viewer?.id]);
 
   if (isPending) return <div className="boot">…</div>;
-  if (!session) return <SignIn />;
+  if (!viewer) return <SignIn />;
 
   return (
     <div className="app">
@@ -199,7 +199,7 @@ export default function Chat() {
         </div>
 
         <div className="who">
-          <span title={session.user.email ?? ""}>{session.user.name || session.user.email}</span>
+          <span title={viewer.email}>{viewer.name || viewer.email}</span>
           <button type="button" className="link" onClick={() => signOut()}>
             Se déconnecter
           </button>

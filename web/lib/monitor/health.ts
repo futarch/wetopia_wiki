@@ -152,6 +152,9 @@ export async function computeHealth(): Promise<Health> {
   const prod = process.env.NODE_ENV === "production";
   if (prod && !process.env.BETTER_AUTH_SECRET) problems.push("BETTER_AUTH_SECRET absent en production");
   if (prod && !process.env.DATABASE_URL) problems.push("DATABASE_URL absent : l'auth est sur un SQLite éphémère");
+  if (prod && !process.env.WETOPIA_ALLOWED_EMAILS) {
+    problems.push("WETOPIA_ALLOWED_EMAILS absent : n'importe qui peut créer un compte");
+  }
   checks.push({
     name: "configuration",
     level: problems.length ? (problems[0].includes("MISTRAL") ? "down" : "warn") : "ok",

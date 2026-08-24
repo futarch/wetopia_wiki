@@ -1,0 +1,4 @@
+[
+  "0 3 * * * curl -fsS -m 280 -H \"authorization: Bearer $WETOPIA_CRON_SECRET\" \"$WETOPIA_PUBLIC_URL/api/cron/lint\"",
+  "*/15 * * * * curl -fsS -m 30 \"$WETOPIA_PUBLIC_URL/api/health\""
+]

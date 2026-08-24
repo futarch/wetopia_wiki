@@ -60,6 +60,24 @@ export function migrateAuth(): Promise<void> {
 }
 
 /**
+ * Who may create an account.
+ *
+ * WETOPIA_ALLOWED_EMAILS is a comma-separated allowlist. Left unset, sign-up is
+ * open — convenient on a laptop, wrong on the internet, which is why
+ * /api/health raises it as a warning in production.
+ */
+export function signUpAllowed(email: string): boolean {
+  const raw = process.env.WETOPIA_ALLOWED_EMAILS?.trim();
+  if (!raw) return true;
+  const wanted = email.trim().toLowerCase();
+  return raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(wanted);
+}
+
+/**
  * The wiki identity of an account: a stable, filesystem-safe slug used to name
  * the private bundle. Derived from the email local part so bundles stay
  * human-readable (`users/albert-dessaint`), and validated because this value

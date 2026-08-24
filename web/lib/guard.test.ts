@@ -24,8 +24,17 @@ fs.writeFileSync(path.join(dataRoot, "users/marie/secret.md"), "SECRET-MARIE\n")
 
 const priv = createSessionContext({ dataRoot, user: "albert", scope: "private" });
 const shar = createSessionContext({ dataRoot, user: "albert", scope: "shared" });
-const denied = (ctx, p, opts) => { try { ctx.resolveBundlePath(p, opts); return false; } catch { return true; } };
-const allowed = (ctx, p, opts) => !denied(ctx, p, opts);
+type Ctx = ReturnType<typeof createSessionContext>;
+type Opts = { forWrite?: boolean };
+const denied = (ctx: Ctx, p: unknown, opts?: Opts) => {
+  try {
+    ctx.resolveBundlePath(p as string, opts);
+    return false;
+  } catch {
+    return true;
+  }
+};
+const allowed = (ctx: Ctx, p: unknown, opts?: Opts) => !denied(ctx, p, opts);
 
 // ---- baseline: the guard must not be uselessly strict ----
 check("lire /shared/index.md (privé)", allowed(priv, "/shared/index.md"));

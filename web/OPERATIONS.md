@@ -41,6 +41,15 @@ serait un second écrivain en course sur les mêmes bundles.
 
 Ou n'importe quelle sonde externe (UptimeRobot, etc.) sur la même URL.
 
+## Qui peut créer un compte
+
+`WETOPIA_ALLOWED_EMAILS` liste les adresses autorisées, séparées par des
+virgules. Sans elle l'inscription est **ouverte** : pratique sur un poste de
+dev, inacceptable en ligne — n'importe qui trouvant l'URL entrerait dans le
+wiki. `/api/health` le signale en production, et le filtre vit dans notre
+route d'auth plutôt que dans un hook de la bibliothèque, avec les autres
+politiques de l'app.
+
 ## Le modèle : `-latest`, décidé, pas subi
 
 `WETOPIA_MODEL` reste sur `mistral-medium-latest`, et c'est un choix, pas un
