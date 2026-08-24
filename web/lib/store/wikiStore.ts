@@ -25,6 +25,15 @@ export interface WikiStoreOptions {
   now?: () => number;
 }
 
+export interface StoreStats {
+  flushOk: number;
+  flushFailed: number;
+  /** Epoch millis of the last bundle successfully stored. */
+  lastFlushAt: number | null;
+  lastFailureAt: number | null;
+  lastError: string | null;
+}
+
 export interface OpenReport {
   repo: string;
   source: "restored" | "created";
@@ -43,6 +52,14 @@ export class WikiStore {
   private tail: Promise<unknown> = Promise.resolve();
   /** Repos mutated since the last flush. */
   private readonly dirty = new Set<string>();
+  /** Durability telemetry: what monitoring reads to know writes are landing. */
+  private readonly stats: StoreStats = {
+    flushOk: 0,
+    flushFailed: 0,
+    lastFlushAt: null,
+    lastFailureAt: null,
+    lastError: null,
+  };
 
   constructor(o: WikiStoreOptions) {
     this.workDir = o.workDir;
@@ -140,6 +157,16 @@ export class WikiStore {
     return this.dirty.size > 0;
   }
 
+  /** Counters since this process booted. */
+  getStats(): StoreStats & { pendingWrites: number } {
+    return { ...this.stats, pendingWrites: this.dirty.size };
+  }
+
+  /** Newest bundles per repo, straight from the durable store. */
+  async listBundles(repo: string) {
+    return this.store.list(repo);
+  }
+
   /** Serialize arbitrary work on the writer queue (used by the lint pass). */
   enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.tail.then(fn, fn);
@@ -153,6 +180,24 @@ export class WikiStore {
 
   /** commit → bundle → store → prune. Not queued: callers already hold the queue. */
   private async flushNow(repo: string, message: string): Promise<string | null> {
+    try {
+      const sha = await this.flushInner(repo, message);
+      if (sha) {
+        this.stats.flushOk++;
+        this.stats.lastFlushAt = this.now();
+      }
+      return sha;
+    } catch (e) {
+      // A failed flush means a write is NOT durable. Record it loudly: this is
+      // the single most important thing monitoring must be able to see.
+      this.stats.flushFailed++;
+      this.stats.lastFailureAt = this.now();
+      this.stats.lastError = `${repo}: ${(e as Error).message}`;
+      throw e;
+    }
+  }
+
+  private async flushInner(repo: string, message: string): Promise<string | null> {
     const dir = this.dirFor(repo);
     let sha = await commitAll(dir, message);
     if (!sha) {

@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { LocalBundleStore, type BundleStore } from "../store/bundleStore.ts";
-import { WikiStore } from "../store/wikiStore.ts";
+import { WikiStore, type OpenReport } from "../store/wikiStore.ts";
 import { SHARED_REPO, repoLayout, userRepo } from "../wiki.ts";
 
 export interface Wetopia {
@@ -16,6 +16,9 @@ export interface Wetopia {
   charter: string;
   /** Open (restore or create) a user's private bundle. Idempotent. */
   ensureUser: (wikiId: string) => Promise<void>;
+  /** When this process booted, and how each bundle came up. */
+  bootedAt: number;
+  openReports: OpenReport[];
 }
 
 const KEY = Symbol.for("wetopia.runtime");
@@ -62,7 +65,7 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
 
   const opened = new Set<string>();
   const repos = [SHARED_REPO, ...(o.users ?? []).map(userRepo)];
-  await store.open(repos);
+  const openReports = await store.open(repos);
   for (const r of repos) opened.add(r);
 
   // A private bundle is created the first time its owner signs in, so accounts
@@ -73,7 +76,7 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
     if (opened.has(repo)) return Promise.resolve();
     chain = chain.then(async () => {
       if (opened.has(repo)) return;
-      await store.open([repo]);
+      openReports.push(...(await store.open([repo])));
       opened.add(repo);
     });
     return chain;
@@ -87,6 +90,8 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
     dataRoot: o.dataRoot,
     charter: fs.readFileSync(charterFile, "utf8"),
     ensureUser,
+    bootedAt: Date.now(),
+    openReports,
   };
   slot[KEY] = runtime;
   return runtime;
