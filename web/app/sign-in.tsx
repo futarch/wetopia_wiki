@@ -1,13 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { signIn, signUp } from "../lib/auth-client.ts";
+import { signIn } from "../lib/auth-client.ts";
 
+/**
+ * Sign-in only.
+ *
+ * There is no sign-up form on purpose: this wiki has a fixed, small membership,
+ * and a public "create an account" button invites attempts that can only fail.
+ * Accounts are provisioned deliberately — the server-side allowlist
+ * (WETOPIA_ALLOWED_EMAILS) remains the actual guard, this simply stops
+ * advertising a door that is not open.
+ */
 export default function SignIn() {
-  const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -15,17 +22,9 @@ export default function SignIn() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res =
-      mode === "in"
-        ? await signIn.email({ email, password })
-        : await signUp.email({ email, password, name: name || email.split("@")[0] });
+    const res = await signIn.email({ email, password });
     setBusy(false);
-    if (res.error) {
-      setError(
-        res.error.message ??
-          (mode === "in" ? "Connexion impossible." : "Création de compte impossible."),
-      );
-    }
+    if (res.error) setError("Adresse ou mot de passe incorrect.");
   };
 
   return (
@@ -34,12 +33,6 @@ export default function SignIn() {
         <h1>Wetopia</h1>
         <p className="sub">Le wiki de la communauté, tenu par un agent.</p>
 
-        {mode === "up" && (
-          <label>
-            Nom
-            <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-          </label>
-        )}
         <label>
           Adresse e-mail
           <input
@@ -55,24 +48,19 @@ export default function SignIn() {
           <input
             type="password"
             required
-            minLength={10}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "in" ? "current-password" : "new-password"}
+            autoComplete="current-password"
           />
         </label>
 
         {error && <p className="error">⚠ {error}</p>}
 
         <button type="submit" disabled={busy}>
-          {busy ? "…" : mode === "in" ? "Se connecter" : "Créer le compte"}
+          {busy ? "…" : "Se connecter"}
         </button>
 
-        <button type="button" className="link" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(null); }}>
-          {mode === "in" ? "Créer un compte" : "J'ai déjà un compte"}
-        </button>
-
-        {mode === "up" && <p className="hint">Mot de passe : 10 caractères minimum.</p>}
+        <p className="hint">Wiki privé. Les comptes sont créés par la communauté.</p>
       </form>
     </div>
   );
