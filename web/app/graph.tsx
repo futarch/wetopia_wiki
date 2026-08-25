@@ -8,6 +8,7 @@ import { createNodeBorderProgram } from "@sigma/node-border";
 import Graph from "graphology";
 import type Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import type { Cited } from "../lib/cited.ts";
 import type { GraphNode, GraphEdge } from "../lib/wiki-view.ts";
 import { MISSING_COLOUR, typeColour } from "./type-colours.ts";
 
@@ -70,14 +71,19 @@ function paneBackground(): string {
   return v || "#f7f8f5";
 }
 
+/** Faded to the background: present, but not part of this answer. */
+const FADED = "#e2e6e0";
+
 function Loader({
   data,
   selected,
   onSelect,
+  cited,
 }: {
   data: { nodes: GraphNode[]; edges: GraphEdge[] };
   selected: string | null;
   onSelect: (id: string) => void;
+  cited: Cited;
 }) {
   const load = useLoadGraph();
   const registerEvents = useRegisterEvents();
@@ -180,9 +186,10 @@ function Loader({
       upStage: () => release(),
 
       // Nodes live on a canvas, so an automated test has no element to target.
-      // Clicking empty space publishes where sigma placed each node: viewport
-      // coordinates to aim at it, graph coordinates to tell whether it moved
-      // (the viewport ones shift whenever the bounding box is recomputed).
+      // Clicking empty space publishes each node as drawn: viewport coordinates
+      // to aim at it, graph coordinates to tell whether it moved (the viewport
+      // ones shift whenever the bounding box is recomputed), colour and label
+      // to tell whether the highlight applied.
       clickStage: () => {
         const g = sigma.getGraph();
         const where = g.nodes().map((n) => {
@@ -194,6 +201,9 @@ function Loader({
             vy: v ? Math.round(v.y) : null,
             x: Number(g.getNodeAttribute(n, "x").toFixed(3)),
             y: Number(g.getNodeAttribute(n, "y").toFixed(3)),
+            // As drawn, after the reducer: how a check sees the highlight.
+            color: d?.color ?? null,
+            label: d?.label ?? "",
           };
         });
         console.debug("sigma place :", JSON.stringify(where));
@@ -201,22 +211,54 @@ function Loader({
     });
   }, [registerEvents, onSelect, sigma]);
 
-  // Selection and the private/shared distinction are drawn by the reducer
-  // rather than by mutating the graph, so they survive re-layout and dragging.
+  // Selection, the private/shared distinction and the sources of the current
+  // answer are drawn by the reducer rather than by mutating the graph, so they
+  // survive re-layout and dragging.
   useEffect(() => {
+    const read = new Set(cited.read);
+    const written = new Set(cited.written);
+    const answering = read.size + written.size > 0;
+    const used = (id: string) => read.has(id) || written.has(id);
+
     sigma.setSetting("nodeReducer", (id, attrs) => {
       // In private scope both spaces are on screen at once, and the same
       // subject may legitimately have a page in each. Private pages are drawn
       // hollow and labelled, so the two are never taken for one another.
-      const base = attrs.wetopiaPrivate
+      let base: Record<string, unknown> = attrs.wetopiaPrivate
         ? { ...attrs, color: hollow, label: `${attrs.label} · privé` }
-        : attrs;
+        : { ...attrs };
+
+      if (answering) {
+        if (used(id)) {
+          // A page the agent wrote is not a source but a result; saying so
+          // keeps « lue pour répondre » and « écrite en répondant » apart.
+          base = {
+            ...base,
+            size: (attrs.size as number) + 3,
+            zIndex: 2,
+            forceLabel: true,
+            label: written.has(id) ? `${base.label} · écrite` : base.label,
+          };
+        } else {
+          // Still there, just not part of this answer.
+          base = { ...base, color: FADED, borderColor: FADED, label: "", zIndex: 0 };
+        }
+      }
+
       return id === selected
-        ? { ...base, size: (attrs.size as number) + 4, zIndex: 1, forceLabel: true }
+        ? { ...base, size: (base.size as number) + 4, zIndex: 3, forceLabel: true, color: attrs.color }
         : base;
     });
+
+    sigma.setSetting("edgeReducer", (edge, attrs) => {
+      if (!answering) return attrs;
+      const g = sigma.getGraph();
+      const both = used(g.source(edge)) && used(g.target(edge));
+      return both ? { ...attrs, color: "#9aa79c", size: 1.8, zIndex: 2 } : { ...attrs, color: "#edf0ec" };
+    });
+
     sigma.refresh();
-  }, [sigma, selected, hollow]);
+  }, [sigma, selected, hollow, cited]);
 
   return null;
 }
@@ -225,10 +267,13 @@ export default function WikiGraph({
   data,
   selected,
   onSelect,
+  cited = { read: [], written: [] },
 }: {
   data: { nodes: GraphNode[]; edges: GraphEdge[] } | null;
   selected: string | null;
   onSelect: (id: string) => void;
+  /** Pages the current answer was built from; empty means show everything. */
+  cited?: Cited;
 }) {
   const settings = useMemo(
     () => ({
@@ -256,7 +301,7 @@ export default function WikiGraph({
 
   return (
     <SigmaContainer style={{ width: "100%", height: "100%" }} settings={settings}>
-      <Loader data={data} selected={selected} onSelect={onSelect} />
+      <Loader data={data} selected={selected} onSelect={onSelect} cited={cited} />
     </SigmaContainer>
   );
 }

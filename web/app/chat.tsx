@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import { Mic, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
+import { citedPages, type Cited, type ToolPart } from "../lib/cited.ts";
 import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
 import type { GraphEdge, GraphNode, PageView } from "../lib/wiki-view.ts";
 import PagePane from "./page-view.tsx";
@@ -51,6 +52,15 @@ function MarkdownText() {
   return <Markdown>{text}</Markdown>;
 }
 
+/**
+ * Where a rendered tool call announces itself.
+ *
+ * The thread state the runtime hands out does not carry the message parts, but
+ * every tool call is rendered — with its arguments and its result — so the
+ * components are the reliable place to read them.
+ */
+const CiteSink = createContext<((id: string, part: ToolPart) => void) | null>(null);
+
 const TOOL_LABELS: Record<string, string> = {
   read_page: "lecture d'une page",
   search: "recherche dans le wiki",
@@ -58,7 +68,17 @@ const TOOL_LABELS: Record<string, string> = {
   append_log: "mise à jour du journal",
 };
 
-function ToolCall({ toolName }: { toolName: string }) {
+function ToolCall(props: { toolName: string; toolCallId?: string; args?: unknown; result?: unknown }) {
+  const { toolName, toolCallId, args, result } = props;
+  const report = useContext(CiteSink);
+  // Arguments stream in and the result lands later, so report on every change
+  // of what actually matters rather than once on mount.
+  const path = (args as { path?: unknown } | undefined)?.path;
+  const resultLength = typeof result === "string" ? result.length : 0;
+  useEffect(() => {
+    if (report && toolCallId) report(toolCallId, { toolName, args, result });
+  }, [report, toolCallId, toolName, path, resultLength]);
+
   return (
     <div className="tool">
       <code>· {TOOL_LABELS[toolName] ?? toolName}</code>
@@ -145,11 +165,13 @@ function Conversation({
   scope,
   onScope,
   onTurnEnd,
+  onCited,
 }: {
   threadId: string;
   scope: Scope;
   onScope: (s: Scope) => void;
   onTurnEnd: () => void;
+  onCited: (c: Cited) => void;
 }) {
   const client = useMemo(() => createPiHttpClient({ baseUrl: "/api/pi" }), []);
   const dictation = useMemo(() => (isDictationSupported() ? new WetopiaDictationAdapter() : undefined), []);
@@ -164,8 +186,33 @@ function Conversation({
     wasRunning.current = running;
   }, [running, onTurnEnd]);
 
+  // What the answer being written right now was built from. Cleared when a new
+  // turn starts, so each question replaces the previous highlight instead of
+  // piling onto it, and pages light up as the agent opens them.
+  const [used, setUsed] = useState<Record<string, ToolPart>>({});
+  // The reporting effect only fires when a call's arguments or result change,
+  // so storing unconditionally cannot loop.
+  const report = useCallback((id: string, part: ToolPart) => {
+    setUsed((prev) => ({ ...prev, [id]: part }));
+  }, []);
+  // Its own ref: the turn-end effect above has already moved wasRunning by the
+  // time this one runs.
+  const turnStarted = useRef(false);
+  useEffect(() => {
+    if (running && !turnStarted.current) setUsed({});
+    turnStarted.current = running;
+  }, [running]);
+
+  // Compared by value, not by identity: reporting a fresh object on every
+  // render would loop through the parent.
+  const sig = JSON.stringify(citedPages(Object.values(used)));
+  useEffect(() => {
+    onCited(JSON.parse(sig) as Cited);
+  }, [sig, onCited]);
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <CiteSink.Provider value={report}>
       <ThreadPrimitive.Root asChild>
         <div className="conv">
           <ThreadPrimitive.Viewport asChild>
@@ -201,6 +248,7 @@ function Conversation({
           <Composer scope={scope} onScope={onScope} dictation={!!dictation} />
         </div>
       </ThreadPrimitive.Root>
+      </CiteSink.Provider>
     </AssistantRuntimeProvider>
   );
 }
@@ -215,6 +263,7 @@ export default function Chat() {
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState<PageView | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
+  const [cited, setCited] = useState<Cited>({ read: [], written: [] });
 
   const loadGraph = useCallback(async () => {
     try {
@@ -246,8 +295,11 @@ export default function Chat() {
     if (!viewer) return;
     setSelected(null);
     setPage(null);
+    setCited({ read: [], written: [] });
     loadGraph();
   }, [viewer, scope, loadGraph]);
+
+  const highlighted = useMemo(() => [...cited.read, ...cited.written], [cited]);
 
   // One conversation per visit: opening or reloading the page starts a fresh
   // one, and switching scope starts another (scope is fixed for a conversation
@@ -310,6 +362,7 @@ export default function Chat() {
               scope={scope}
               onScope={setScope}
               onTurnEnd={loadGraph}
+              onCited={setCited}
             />
           ) : (
             // The scope toggle stays put while the next conversation opens,
@@ -332,7 +385,16 @@ export default function Chat() {
         </section>
 
         <section className="pane pane-graph" aria-label="Graphe du wiki">
-          <WikiGraph data={graph} selected={selected} onSelect={openPage} />
+          {highlighted.length > 0 && (
+            <p className="cited-note">
+              {highlighted.length === 1 ? "1 page a servi" : `${highlighted.length} pages ont servi`} à
+              cette réponse
+              <button type="button" className="link" onClick={() => setCited({ read: [], written: [] })}>
+                tout réafficher
+              </button>
+            </p>
+          )}
+          <WikiGraph data={graph} selected={selected} onSelect={openPage} cited={cited} />
         </section>
 
         <section className="pane pane-page" aria-label="Page">

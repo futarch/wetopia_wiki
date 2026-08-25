@@ -73,6 +73,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pane + .pane { border-left: 1px solid var(--line); }
 .pane-graph { background: var(--bg); position: relative; }
+/* What the current answer was built from, said in words as well as in colour:
+   a faded graph on its own reads as a bug. */
+.cited-note {
+  margin: 0; padding: 8px 14px; font-size: 12.5px; color: var(--muted);
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.cited-note .link { margin-left: auto; }
 /* Sigma measures its container, so the wrapper must have a real height rather
    than collapsing to its (empty) content. */
 .pane-graph > div { flex: 1; min-height: 0; }

@@ -19,6 +19,7 @@ npm run test:agent    # boucle agent en conditions réelles (Mistral)
 npm run test:lint     # lint nocturne en conditions réelles (Mistral)
 npm run check:ui      # navigateur : connexion, conversation, dictée
 npm run check:panes   # navigateur : les trois panneaux, le graphe, la barrière
+npm run check:cite    # navigateur + Mistral : les sources d'une réponse s'allument
 ```
 
 Les deux vérifications navigateur lisent le compte de test dans
