@@ -163,6 +163,24 @@ export async function computeHealth(): Promise<Health> {
     detail: problems.length ? problems.join(" · ") : "complète",
   });
 
+  // --- memory: is the instance the right size? ---
+  const mem = process.memoryUsage();
+  const mb = (n: number) => Math.round(n / 1048576);
+  const heapCapMb = Number(/--max-old-space-size=(\d+)/.exec(process.env.NODE_OPTIONS ?? "")?.[1] ?? 0);
+  const heapPct = heapCapMb ? Math.round((mb(mem.heapUsed) / heapCapMb) * 100) : null;
+  checks.push({
+    name: "memoire",
+    // Near the heap ceiling the process dies mid-turn, taking the single writer
+    // with it — worth seeing before it happens, not after.
+    level: heapPct !== null && heapPct > 85 ? "warn" : "ok",
+    detail: `${mb(mem.rss)} Mio résidents, tas ${mb(mem.heapUsed)}/${heapCapMb || "?"} Mio${
+      heapPct !== null ? ` (${heapPct} %)` : ""
+    }`,
+    rssMb: mb(mem.rss),
+    heapUsedMb: mb(mem.heapUsed),
+    heapCapMb: heapCapMb || null,
+  });
+
   return {
     status: worst(checks.map((c) => c.level)),
     checkedAt: new Date().toISOString(),
