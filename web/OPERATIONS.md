@@ -86,6 +86,12 @@ curl -fsS -X POST https://<app>/api/auth/sign-up/email \
   -d '{"name":"Prénom Nom","email":"b@exemple.fr","password":"…"}'
 ```
 
+Le déploiement bascule le trafic une fois la nouvelle instance prête :
+`clever restart` rend la main avant que ce soit fait, et l'inscription
+répond encore `403` pendant quelques dizaines de secondes. Attendre que
+`/api/health` annonce un `uptimeSeconds` remis à zéro, ou simplement
+réessayer.
+
 Le mot de passe est transmis à la personne hors du dépôt, et elle le
 change quand elle veut. Le bundle privé, lui, n'est créé qu'à la première
 conversation — c'est-à-dire au premier chargement de l'app, le navigateur
