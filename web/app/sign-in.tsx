@@ -31,7 +31,6 @@ export default function SignIn() {
     <div className="signin">
       <form onSubmit={submit}>
         <h1>Wetopia</h1>
-        <p className="sub">Le wiki de la communauté, tenu par un agent.</p>
 
         <label>
           Adresse e-mail
@@ -59,8 +58,6 @@ export default function SignIn() {
         <button type="submit" disabled={busy}>
           {busy ? "…" : "Se connecter"}
         </button>
-
-        <p className="hint">Wiki privé. Les comptes sont créés par la communauté.</p>
       </form>
     </div>
   );
