@@ -55,6 +55,33 @@ function defaultBundleStore(localDir: string): BundleStore {
   return new LocalBundleStore(localDir);
 }
 
+/**
+ * Carry the deployed charter into the shared bundle when the two differ.
+ *
+ * The charter is the app's contract with the agent, shipped in the repository;
+ * the bundle holds a copy so the community can read the rules of its own wiki.
+ * Those two drifted apart silently: seeding only ever runs for a bundle that
+ * does not exist yet, so a wiki already in service kept the charter it was
+ * created with, and a rule added to the repository never reached the running
+ * agent — a deployment looked like it had applied it. It is written through the
+ * queue like any other change to shared content, and noted in the log, so the
+ * change is visible to the people who live in this wiki rather than appearing
+ * in their charter overnight with no trace.
+ */
+async function alignCharter(store: WikiStore, seedFile: string, liveFile: string): Promise<void> {
+  const deployed = fs.readFileSync(seedFile, "utf8");
+  if (fs.readFileSync(liveFile, "utf8") === deployed) return;
+  await store.write(SHARED_REPO, "charte alignée sur la version déployée", () => {
+    fs.writeFileSync(liveFile, deployed);
+    const stamp = new Date().toISOString().slice(0, 16) + "Z";
+    fs.appendFileSync(
+      path.join(path.dirname(liveFile), "log.md"),
+      `- ${stamp} [process:deploy] MAJ /shared/AGENTS.md — charte alignée sur la version déployée\n`,
+    );
+  });
+  console.log("[wetopia] charte : alignée sur la version déployée");
+}
+
 /** Restore (or create) every bundle and pin the runtime. Idempotent per process. */
 export async function boot(o: BootOptions): Promise<Wetopia> {
   const existing = slot[KEY];
@@ -110,6 +137,7 @@ export async function boot(o: BootOptions): Promise<Wetopia> {
 
   const charterFile = path.join(o.dataRoot, "shared", "AGENTS.md");
   if (!fs.existsSync(charterFile)) throw new Error(`charte absente du bundle partagé : ${charterFile}`);
+  await alignCharter(store, path.join(seedShared, "AGENTS.md"), charterFile);
 
   const runtime: Wetopia = {
     store,

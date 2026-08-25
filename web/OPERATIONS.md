@@ -213,6 +213,20 @@ Trois pièges rencontrés, à connaître avant d'y retoucher :
 3. **`typescript` doit être en `dependencies`** (le build type-check), et
    `playwright` en `devDependencies` (il n'a rien à faire en production).
 
+## La charte suit le déploiement
+
+`seed/shared/AGENTS.md` est la charte ; le bundle partagé en garde une copie
+que la communauté peut lire. Les deux dérivaient en silence : la graine n'est
+appliquée qu'à un bundle qui n'existe pas encore, donc un wiki déjà en service
+gardait la charte de sa création. Une règle ajoutée au dépôt n'atteignait jamais
+l'agent — et le déploiement donnait l'illusion du contraire.
+
+Le démarrage réaligne désormais la copie du bundle sur celle du dépôt quand
+elles diffèrent, à travers la file d'écriture, avec une ligne
+`[process:deploy]` dans `log.md`. Rien à faire à la main : déployer suffit.
+Corollaire : éditer la copie du bundle ne change rien, elle sera réécrite au
+démarrage suivant (charte §13).
+
 ## Déploiement (Clever Cloud)
 
 - **Un seul écrivain** : déploiement *stop-then-start* (pas de rolling),

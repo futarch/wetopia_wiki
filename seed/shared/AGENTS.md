@@ -199,3 +199,9 @@ This charter is itself wiki content. Anyone may propose a change — a
 `Decision` page (status draft) noted in log.md. For now, both members
 must agree; community governance replaces this rule when the community
 exists. The agent applies this file; it never edits it.
+
+The copy at the root of the shared bundle is a readable mirror, not the
+original: the deployment carries the charter, and each start realigns the
+bundle's copy on it — noted in log.md as `[process:deploy]`. Editing that
+copy by hand therefore changes nothing; a change lands in the repository,
+and reaches the wiki with the next deployment.
