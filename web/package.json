@@ -12,7 +12,8 @@
     "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts",
     "check:ui": "node lib/ui.check.mjs",
     "test:lint": "node --experimental-strip-types lib/lint/lint.integration.test.ts",
-    "check:panes": "node panes.check.mjs"
+    "check:panes": "node panes.check.mjs",
+    "seed:dev": "node --experimental-strip-types lib/dev/seed-fixture.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.16",

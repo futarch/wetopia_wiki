@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  groupPartByType,
   useMessagePartText,
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import dynamic from "next/dynamic";
-import { Mic, PanelRightClose, PanelRightOpen, Square } from "lucide-react";
+import { ChevronRight, Mic, PanelRightClose, PanelRightOpen, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
 import {
@@ -106,6 +107,27 @@ function ToolCall({ toolName }: { toolName: string }) {
     <div className="tool">
       <code>· {TOOL_LABELS[toolName] ?? toolName}</code>
     </div>
+  );
+}
+
+/**
+ * What the agent did before answering, folded into one line.
+ *
+ * react-pi projects a turn's tool calls as adjacent parts of the assistant
+ * message, so laid out flat they push the answer down the screen and read as
+ * noise between the question and its reply. Adjacent ones are coalesced into a
+ * single group here and shown closed: the line says what is happening, opening
+ * it shows the steps.
+ */
+function Steps({ running, count, children }: { running: boolean; count: number; children: ReactNode }) {
+  return (
+    <details className="steps" data-running={running}>
+      <summary>
+        <ChevronRight className="chev" size={14} strokeWidth={2} aria-hidden />
+        {running ? "Consultation du wiki…" : `${count} étape${count > 1 ? "s" : ""} dans le wiki`}
+      </summary>
+      <div className="steps-body">{children}</div>
+    </details>
   );
 }
 
@@ -265,9 +287,35 @@ function Conversation({
                   AssistantMessage: () => (
                     <div className="row" data-role="assistant">
                       <div className="bubble">
-                        <MessagePrimitive.Parts
-                          components={{ Text: MarkdownText, tools: { Fallback: ToolCall } }}
-                        />
+                        <MessagePrimitive.GroupedParts
+                          groupBy={groupPartByType({
+                            "tool-call": ["group-steps"],
+                            reasoning: ["group-steps"],
+                          })}
+                          // The composer already says the agent is working; a
+                          // second dot below the message would only repeat it.
+                          indicator="never"
+                        >
+                          {({ part, children }) => {
+                            switch (part.type) {
+                              case "group-steps":
+                                return (
+                                  <Steps
+                                    running={part.status?.type === "running"}
+                                    count={part.indices.length}
+                                  >
+                                    {children}
+                                  </Steps>
+                                );
+                              case "text":
+                                return <MarkdownText />;
+                              case "tool-call":
+                                return <ToolCall toolName={part.toolName} />;
+                              default:
+                                return null;
+                            }
+                          }}
+                        </MessagePrimitive.GroupedParts>
                       </div>
                     </div>
                   ),
