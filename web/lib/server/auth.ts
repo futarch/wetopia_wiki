@@ -43,6 +43,15 @@ export const authOptions = {
   },
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me-in-production",
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  user: {
+    additionalFields: {
+      // The account's wiki identity (see resolveWikiId). `input: false` is the
+      // load-bearing part: this value becomes a path segment and the name of a
+      // private bundle, so no client may ever propose one — a chosen wikiId
+      // would be a chosen place in someone else's wiki.
+      wikiId: { type: "string" as const, required: false, input: false },
+    },
+  },
   plugins: [nextCookies()],
 } satisfies Parameters<typeof betterAuth>[0];
 
@@ -86,24 +95,71 @@ export function signUpAllowed(email: string): boolean {
     .includes(wanted);
 }
 
-/**
- * The wiki identity of an account: a stable, filesystem-safe slug used to name
- * the private bundle. Derived from the email local part so bundles stay
- * human-readable (`users/albert-dessaint`), and validated because this value
- * becomes a path segment.
- */
-export function wikiIdFor(user: { email?: string | null; id: string }): string {
-  const base = (user.email ?? "").split("@")[0] ?? "";
-  const slug = base
+/** Filesystem-safe slug. This value becomes a path segment, hence the rigour. */
+function slugify(raw: string): string {
+  return raw
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  if (/^[a-z0-9][a-z0-9-]*$/.test(slug)) return slug;
-  // Fall back to the account id, sanitised, rather than inventing a name.
-  return `u-${user.id.replace(/[^a-z0-9]/gi, "").slice(0, 24).toLowerCase()}`;
+    .slice(0, 40)
+    .replace(/-+$/, "");
+}
+
+const usableWikiId = (s: string): boolean => /^[a-z0-9][a-z0-9-]*$/.test(s);
+
+export interface Account {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  wikiId?: unknown;
+}
+
+/**
+ * Names to try for a new wiki identity, best first: the person's name, so a
+ * bundle reads as `users/sarah-fasiliabas`; failing that the email's local
+ * part; failing that the account id, which cannot collide and cannot be empty.
+ */
+export function wikiIdCandidates(user: Account): string[] {
+  const out: string[] = [];
+  for (const raw of [user.name ?? "", (user.email ?? "").split("@")[0] ?? ""]) {
+    const s = slugify(raw);
+    if (usableWikiId(s) && !out.includes(s)) out.push(s);
+  }
+  out.push(`u-${user.id.replace(/[^a-z0-9]/gi, "").slice(0, 24).toLowerCase()}`);
+  return out;
+}
+
+/**
+ * The wiki identity of an account: the slug naming its private bundle.
+ *
+ * Assigned once, at first sight, then stored and never recomputed. That is the
+ * whole point: this is a path segment and the name of a git bundle, so it must
+ * not follow someone who edits their display name — they would silently land in
+ * an empty wiki while their own was left stranded.
+ *
+ * The uniqueness check is best-effort: two accounts whose very first request
+ * arrives at the same instant with the same candidate could both take it. It
+ * needs identical names and simultaneous first sign-ins; the cost is a shared
+ * bundle, which the guard still keeps inside `/users/<id>`.
+ */
+export async function resolveWikiId(user: Account): Promise<string> {
+  const stored = typeof user.wikiId === "string" ? user.wikiId : "";
+  if (usableWikiId(stored)) return stored;
+
+  const ctx = await auth.$context;
+  for (const candidate of wikiIdCandidates(user)) {
+    const taken = await ctx.adapter.findMany({
+      model: "user",
+      where: [{ field: "wikiId", value: candidate }],
+      limit: 1,
+    });
+    if (taken.length) continue;
+    await ctx.internalAdapter.updateUser(user.id, { wikiId: candidate });
+    return candidate;
+  }
+  throw new Error("aucun identifiant de wiki disponible");
 }
 
 export interface Viewer {
@@ -117,7 +173,7 @@ export async function currentViewer(headers: Headers): Promise<Viewer | null> {
   const session = await auth.api.getSession({ headers });
   if (!session?.user) return null;
   return {
-    wikiId: wikiIdFor(session.user),
+    wikiId: await resolveWikiId(session.user),
     email: session.user.email ?? "",
     name: session.user.name ?? undefined,
   };

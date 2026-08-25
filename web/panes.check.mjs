@@ -26,7 +26,9 @@ const b = await chromium.launch({
   ],
   // Outbound HTTPS from such an environment goes through a local proxy; without
   // it a run against a deployed URL just resets the connection.
-  ...(process.env.HTTPS_PROXY ? { proxy: { server: process.env.HTTPS_PROXY } } : {}),
+  ...(process.env.HTTPS_PROXY
+    ? { proxy: { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1,::1" } }
+    : {}),
 });
 const ctx = await b.newContext({ viewport: { width: 1600, height: 900 }, permissions: ["microphone"] });
 const p = await ctx.newPage();
