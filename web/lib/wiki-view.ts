@@ -83,13 +83,22 @@ export interface PageView {
   type: string;
   markdown: string;
   exists: boolean;
+  /** In a private bundle: visible to its owner alone. */
+  private: boolean;
 }
 
 export function readPageView(dataRoot: string, user: string, scope: Scope, p: string): PageView {
   const ctx = createSessionContext({ dataRoot, user, scope });
   const abs = ctx.resolveBundlePath(p); // throws when out of scope
   if (!fs.existsSync(abs)) {
-    return { path: p, title: path.basename(p, ".md"), type: "", markdown: "", exists: false };
+    return {
+      path: p,
+      title: path.basename(p, ".md"),
+      type: "",
+      markdown: "",
+      exists: false,
+      private: p.startsWith("/users/"),
+    };
   }
   const raw = fs.readFileSync(abs, "utf8");
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(raw);
@@ -103,5 +112,6 @@ export function readPageView(dataRoot: string, user: string, scope: Scope, p: st
     type: field("type"),
     markdown: body.trim(),
     exists: true,
+    private: p.startsWith("/users/"),
   };
 }

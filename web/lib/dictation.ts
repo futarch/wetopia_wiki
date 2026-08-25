@@ -10,11 +10,35 @@ import type { DictationAdapter } from "@assistant-ui/react";
 
 type Listener<T> = (value: T) => void;
 
+/**
+ * What the interface has to say out loud.
+ *
+ * The adapter's own status cannot carry this: it ends only once the transcript
+ * is back, so the long wait between releasing the button and seeing the words
+ * would read as « still recording ». `transcribing` is that wait, named.
+ */
+export type DictationPhase = "idle" | "starting" | "recording" | "transcribing";
+
 export class WetopiaDictationAdapter implements DictationAdapter {
   /** Keep the textarea usable: the transcript is appended when it arrives. */
   disableInputDuringDictation = false;
 
+  phase: DictationPhase = "idle";
+  private readonly watchers = new Set<Listener<DictationPhase>>();
+
+  /** Follow the phase; returns the unsubscribe function. */
+  watch(cb: Listener<DictationPhase>): () => void {
+    this.watchers.add(cb);
+    return () => this.watchers.delete(cb);
+  }
+
+  private to(phase: DictationPhase) {
+    this.phase = phase;
+    for (const cb of this.watchers) cb(phase);
+  }
+
   listen(): DictationAdapter.Session {
+    this.to("starting");
     const speechStart: Listener<void>[] = [];
     const speechEnd: Listener<DictationAdapter.Result>[] = [];
     const speech: Listener<DictationAdapter.Result>[] = [];
@@ -42,6 +66,7 @@ export class WetopiaDictationAdapter implements DictationAdapter {
 
     const finish = (result: DictationAdapter.Result, reason: "stopped" | "cancelled" | "error") => {
       session.status = { type: "ended", reason };
+      this.to("idle");
       for (const cb of speechEnd) cb(result);
     };
 
@@ -65,6 +90,7 @@ export class WetopiaDictationAdapter implements DictationAdapter {
         recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
         recorder.start();
         session.status = { type: "running" };
+        this.to("recording");
         for (const cb of speechStart) cb();
       } catch (e) {
         finish({ transcript: "", isFinal: true }, "error");
@@ -82,6 +108,7 @@ export class WetopiaDictationAdapter implements DictationAdapter {
       await done;
       stopTracks();
       if (cancelled) return;
+      this.to("transcribing");
       try {
         const transcript = await transcribe();
         for (const cb of speech) cb({ transcript, isFinal: true });

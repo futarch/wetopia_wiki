@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types lib/guard.test.ts && node --experimental-strip-types lib/server/identity.test.ts && node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/lint/lint.test.ts && node --experimental-strip-types lib/monitor/health.test.ts && node --experimental-strip-types lib/store/s3.test.ts && node --experimental-strip-types lib/store/sessions.test.ts && node --experimental-strip-types lib/wiki-view.test.ts && node --experimental-strip-types lib/cited.test.ts",
+    "test": "node --experimental-strip-types lib/guard.test.ts && node --experimental-strip-types lib/server/identity.test.ts && node --experimental-strip-types lib/store/store.test.ts && node --experimental-strip-types lib/lint/lint.test.ts && node --experimental-strip-types lib/monitor/health.test.ts && node --experimental-strip-types lib/store/s3.test.ts && node --experimental-strip-types lib/store/sessions.test.ts && node --experimental-strip-types lib/wiki-view.test.ts",
     "test:store": "node --experimental-strip-types lib/store/store.test.ts",
     "dev": "next dev",
     "build": "next build",
@@ -12,8 +12,7 @@
     "test:agent": "node --experimental-strip-types lib/agent/agent.test.ts",
     "check:ui": "node lib/ui.check.mjs",
     "test:lint": "node --experimental-strip-types lib/lint/lint.integration.test.ts",
-    "check:panes": "node panes.check.mjs",
-    "check:cite": "node cite.check.mjs"
+    "check:panes": "node panes.check.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.16",

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -10,11 +10,14 @@ import {
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import dynamic from "next/dynamic";
-import { Mic, Square } from "lucide-react";
+import { Mic, PanelRightClose, PanelRightOpen, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
-import { citedPages, type Cited, type ToolPart } from "../lib/cited.ts";
-import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
+import {
+  WetopiaDictationAdapter,
+  isDictationSupported,
+  type DictationPhase,
+} from "../lib/dictation.ts";
 import type { GraphEdge, GraphNode, PageView } from "../lib/wiki-view.ts";
 import PagePane from "./page-view.tsx";
 import SignIn from "./sign-in.tsx";
@@ -32,6 +35,45 @@ const SCOPE_HINT: Record<Scope, string> = {
   shared:
     "L'agent ne voit que le wiki partagé. Ce que vous dites ici peut devenir une page pour tout le monde.",
 };
+
+/** Below this the three panes cannot sit side by side, so only one is shown. */
+const NARROW = "(max-width: 1100px)";
+
+/**
+ * Whether the layout is showing one pane at a time.
+ *
+ * CSS decides what is visible, so the first paint is right whatever this says;
+ * the value only drives behaviour that CSS cannot express, like opening a page
+ * bringing its pane to the front.
+ */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW);
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return narrow;
+}
+
+type View = "chat" | "graph" | "page";
+
+const VIEW_LABELS: Record<View, string> = { chat: "Conversation", graph: "Graphe", page: "Page" };
+
+/** One pane at a time, on a screen too narrow for three. */
+function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <nav className="view-switch" aria-label="Panneau affiché">
+      {(Object.keys(VIEW_LABELS) as View[]).map((v) => (
+        <button key={v} type="button" data-on={view === v} onClick={() => onChange(v)}>
+          {VIEW_LABELS[v]}
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 /** The only way to share something: the scope of the conversation you say it in. */
 function ScopeSwitch({ scope, onChange }: { scope: Scope; onChange: (s: Scope) => void }) {
@@ -52,15 +94,6 @@ function MarkdownText() {
   return <Markdown>{text}</Markdown>;
 }
 
-/**
- * Where a rendered tool call announces itself.
- *
- * The thread state the runtime hands out does not carry the message parts, but
- * every tool call is rendered — with its arguments and its result — so the
- * components are the reliable place to read them.
- */
-const CiteSink = createContext<((id: string, part: ToolPart) => void) | null>(null);
-
 const TOOL_LABELS: Record<string, string> = {
   read_page: "lecture d'une page",
   search: "recherche dans le wiki",
@@ -68,21 +101,47 @@ const TOOL_LABELS: Record<string, string> = {
   append_log: "mise à jour du journal",
 };
 
-function ToolCall(props: { toolName: string; toolCallId?: string; args?: unknown; result?: unknown }) {
-  const { toolName, toolCallId, args, result } = props;
-  const report = useContext(CiteSink);
-  // Arguments stream in and the result lands later, so report on every change
-  // of what actually matters rather than once on mount.
-  const path = (args as { path?: unknown } | undefined)?.path;
-  const resultLength = typeof result === "string" ? result.length : 0;
-  useEffect(() => {
-    if (report && toolCallId) report(toolCallId, { toolName, args, result });
-  }, [report, toolCallId, toolName, path, resultLength]);
-
+function ToolCall({ toolName }: { toolName: string }) {
   return (
     <div className="tool">
       <code>· {TOOL_LABELS[toolName] ?? toolName}</code>
     </div>
+  );
+}
+
+/**
+ * What the microphone is doing, in words.
+ *
+ * Our adapter records first and transcribes at the end, so there is no live
+ * transcript to show and nothing moves on screen for several seconds. Without
+ * this the only sign of life is a button changing colour, and people talk into
+ * a microphone that is not listening — or stop talking while it still is.
+ */
+function DictationState({ dictation }: { dictation: WetopiaDictationAdapter }) {
+  const [phase, setPhase] = useState<DictationPhase>(dictation.phase);
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => dictation.watch(setPhase), [dictation]);
+  useEffect(() => {
+    if (phase !== "recording") {
+      setSeconds(0);
+      return;
+    }
+    // A counter that moves is the proof the microphone is live.
+    const started = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 250);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  if (phase === "idle") return null;
+  const mmss = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <p className="dictation" data-phase={phase} role="status">
+      <span className="dot" aria-hidden />
+      {phase === "starting" && "Ouverture du micro…"}
+      {phase === "recording" && <>Enregistrement · {mmss} — parlez, puis appuyez sur ⏹</>}
+      {phase === "transcribing" && "Transcription en cours…"}
+    </p>
   );
 }
 
@@ -93,10 +152,11 @@ function Composer({
 }: {
   scope: Scope;
   onScope: (s: Scope) => void;
-  dictation: boolean;
+  dictation: WetopiaDictationAdapter | undefined;
 }) {
   return (
     <div className="composer">
+      {dictation && <DictationState dictation={dictation} />}
       <ComposerPrimitive.Root asChild>
         <form>
           <ComposerPrimitive.Input
@@ -107,9 +167,6 @@ function Composer({
             submitMode="none"
             placeholder="Écrire…"
           />
-          <ComposerPrimitive.DictationTranscript asChild>
-            <span className="transcript" />
-          </ComposerPrimitive.DictationTranscript>
 
           <div className="composer-row">
             <ScopeSwitch scope={scope} onChange={onScope} />
@@ -165,13 +222,11 @@ function Conversation({
   scope,
   onScope,
   onTurnEnd,
-  onCited,
 }: {
   threadId: string;
   scope: Scope;
   onScope: (s: Scope) => void;
   onTurnEnd: () => void;
-  onCited: (c: Cited) => void;
 }) {
   const client = useMemo(() => createPiHttpClient({ baseUrl: "/api/pi" }), []);
   const dictation = useMemo(() => (isDictationSupported() ? new WetopiaDictationAdapter() : undefined), []);
@@ -186,33 +241,8 @@ function Conversation({
     wasRunning.current = running;
   }, [running, onTurnEnd]);
 
-  // What the answer being written right now was built from. Cleared when a new
-  // turn starts, so each question replaces the previous highlight instead of
-  // piling onto it, and pages light up as the agent opens them.
-  const [used, setUsed] = useState<Record<string, ToolPart>>({});
-  // The reporting effect only fires when a call's arguments or result change,
-  // so storing unconditionally cannot loop.
-  const report = useCallback((id: string, part: ToolPart) => {
-    setUsed((prev) => ({ ...prev, [id]: part }));
-  }, []);
-  // Its own ref: the turn-end effect above has already moved wasRunning by the
-  // time this one runs.
-  const turnStarted = useRef(false);
-  useEffect(() => {
-    if (running && !turnStarted.current) setUsed({});
-    turnStarted.current = running;
-  }, [running]);
-
-  // Compared by value, not by identity: reporting a fresh object on every
-  // render would loop through the parent.
-  const sig = JSON.stringify(citedPages(Object.values(used)));
-  useEffect(() => {
-    onCited(JSON.parse(sig) as Cited);
-  }, [sig, onCited]);
-
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <CiteSink.Provider value={report}>
       <ThreadPrimitive.Root asChild>
         <div className="conv">
           <ThreadPrimitive.Viewport asChild>
@@ -245,10 +275,9 @@ function Conversation({
               />
             </div>
           </ThreadPrimitive.Viewport>
-          <Composer scope={scope} onScope={onScope} dictation={!!dictation} />
+          <Composer scope={scope} onScope={onScope} dictation={dictation} />
         </div>
       </ThreadPrimitive.Root>
-      </CiteSink.Provider>
     </AssistantRuntimeProvider>
   );
 }
@@ -263,7 +292,9 @@ export default function Chat() {
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState<PageView | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
-  const [cited, setCited] = useState<Cited>({ read: [], written: [] });
+  const [showPage, setShowPage] = useState(true);
+  const [view, setView] = useState<View>("chat");
+  const narrow = useNarrow();
 
   const loadGraph = useCallback(async () => {
     try {
@@ -278,6 +309,11 @@ export default function Chat() {
     async (p: string) => {
       setSelected(p);
       setPageLoading(true);
+      // Opening a page has to put it in front of you: hidden on a wide screen,
+      // or behind another pane on a narrow one, the click would do nothing
+      // visible.
+      setShowPage(true);
+      if (narrow) setView("page");
       try {
         const res = await fetch(`/api/wiki/page?scope=${scope}&path=${encodeURIComponent(p)}`);
         setPage(res.ok ? await res.json() : null);
@@ -287,7 +323,7 @@ export default function Chat() {
         setPageLoading(false);
       }
     },
-    [scope],
+    [scope, narrow],
   );
 
   // Scope decides what the graph may even contain, so both panes reset with it.
@@ -295,11 +331,8 @@ export default function Chat() {
     if (!viewer) return;
     setSelected(null);
     setPage(null);
-    setCited({ read: [], written: [] });
     loadGraph();
   }, [viewer, scope, loadGraph]);
-
-  const highlighted = useMemo(() => [...cited.read, ...cited.written], [cited]);
 
   // One conversation per visit: opening or reloading the page starts a fresh
   // one, and switching scope starts another (scope is fixed for a conversation
@@ -343,8 +376,26 @@ export default function Chat() {
           <strong>Wetopia</strong>
         </div>
 
+        <ViewSwitch view={view} onChange={setView} />
+
         <div className="who">
-          <span title={viewer.email}>{viewer.name || viewer.email}</span>
+          <button
+            type="button"
+            className="pane-toggle"
+            onClick={() => setShowPage((v) => !v)}
+            aria-pressed={showPage}
+            title={showPage ? "Masquer le panneau de lecture" : "Afficher le panneau de lecture"}
+          >
+            {showPage ? (
+              <PanelRightClose size={17} strokeWidth={1.8} aria-hidden />
+            ) : (
+              <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden />
+            )}
+            <span>{showPage ? "Masquer la page" : "Afficher la page"}</span>
+          </button>
+          <span className="viewer" title={viewer.email}>
+            {viewer.name || viewer.email}
+          </span>
           <button type="button" className="link" onClick={() => signOut()}>
             Se déconnecter
           </button>
@@ -353,7 +404,7 @@ export default function Chat() {
 
       {error && <p className="error">⚠ {error}</p>}
 
-      <div className="panes">
+      <div className="panes" data-view={view} data-page={showPage}>
         <section className="pane pane-chat" aria-label="Conversation">
           {threadId ? (
             <Conversation
@@ -362,7 +413,6 @@ export default function Chat() {
               scope={scope}
               onScope={setScope}
               onTurnEnd={loadGraph}
-              onCited={setCited}
             />
           ) : (
             // The scope toggle stays put while the next conversation opens,
@@ -385,20 +435,16 @@ export default function Chat() {
         </section>
 
         <section className="pane pane-graph" aria-label="Graphe du wiki">
-          {highlighted.length > 0 && (
-            <p className="cited-note">
-              {highlighted.length === 1 ? "1 page a servi" : `${highlighted.length} pages ont servi`} à
-              cette réponse
-              <button type="button" className="link" onClick={() => setCited({ read: [], written: [] })}>
-                tout réafficher
-              </button>
-            </p>
-          )}
-          <WikiGraph data={graph} selected={selected} onSelect={openPage} cited={cited} />
+          <WikiGraph data={graph} selected={selected} onSelect={openPage} />
         </section>
 
         <section className="pane pane-page" aria-label="Page">
-          <PagePane page={page} loading={pageLoading} onFollow={openPage} />
+          <PagePane
+            page={page}
+            loading={pageLoading}
+            onFollow={openPage}
+            onClose={() => setShowPage(false)}
+          />
         </section>
       </div>
     </div>

@@ -16,6 +16,8 @@ well using the wiki, and leave the wiki better than you found it.
 ## 2. Language
 
 - Speak to each user in their language (French, for now).
+- Address the person as « vous », never « tu », however familiar the exchange
+  becomes.
 - Human layer in French: titles, descriptions, page bodies, log notes.
 - Machine layer in English/ASCII: frontmatter keys and values, type names,
   tags, filenames (kebab-case, no accents: `rene-dupont.md`), ISO-8601 dates.

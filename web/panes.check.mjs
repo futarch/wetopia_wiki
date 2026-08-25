@@ -33,9 +33,17 @@ const b = await chromium.launch({
 const ctx = await b.newContext({ viewport: { width: 1600, height: 900 }, permissions: ["microphone"] });
 const p = await ctx.newPage();
 const errs = [];
+// This check drives the microphone, so it calls the transcription route. A
+// server without a speech key answers 502 there — an environment fact, not a
+// defect in the interface — so it is reported apart rather than counted.
+const transcription = [];
 p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
 p.on("console", (m) => {
-  if (m.type() === "error" && !/favicon/i.test(m.text())) errs.push("console: " + m.text().slice(0, 160));
+  if (m.type() !== "error" || /favicon/i.test(m.text())) return;
+  // The endpoint is in the location, not in the text of a failed-fetch message.
+  const where = m.location?.()?.url ?? "";
+  const line = "console: " + m.text().slice(0, 160);
+  (/transcribe/.test(where + m.text()) ? transcription : errs).push(line);
 });
 let fails = 0;
 const ok = (n, c) => {
@@ -61,7 +69,7 @@ ok("panneau page en attente", (await p.locator(".pane-page .pane-empty").innerTe
 // --- header ---
 const topbar = await p.locator(".topbar").innerText();
 ok("plus de sous-titre « Le wiki de la communauté »", !topbar.includes("wiki de la communauté"));
-ok("prénom et nom affichés", /\p{L}+\s+\p{L}+/u.test(await p.locator(".who span").innerText()));
+ok("prénom et nom affichés", /\p{L}+\s+\p{L}+/u.test(await p.locator(".viewer").innerText()));
 ok("plus de bandeau de portée", (await p.locator(".scope-line").count()) === 0);
 ok("le toggle est dans le panneau chat", (await p.locator(".pane-chat .composer .scope-switch").count()) === 1);
 ok("le toggle n'est plus dans l'en-tête", (await p.locator(".topbar .scope-switch").count()) === 0);
@@ -87,6 +95,22 @@ await ta.press("Enter");
 await ta.type("deuxième ligne");
 ok("Entrée insère un saut de ligne", (await ta.inputValue()).includes("\n"));
 ok("Entrée n'envoie pas le message", (await p.locator(".row[data-role='user']").count()) === 0);
+await ta.fill("");
+
+// --- dictation says what the microphone is doing ---
+ok("rien ne s'affiche tant qu'on ne dicte pas", (await p.locator(".dictation").count()) === 0);
+await p.locator('.pane-chat .composer button[aria-label="Dicter"]').click();
+await p.waitForSelector(".dictation", { timeout: 15000 });
+await p.waitForTimeout(2600);
+const etat = await p.locator(".dictation").innerText();
+const phase = await p.locator(".dictation").getAttribute("data-phase");
+ok(`l'enregistrement s'annonce (« ${etat.trim()} », phase ${phase})`, phase === "recording");
+ok("un compteur montre que le micro tourne", /0[01]:0[1-9]/.test(etat));
+const encore = await p.locator(".dictation").innerText();
+ok("et il avance", encore !== etat || /0[01]:0[2-9]/.test(encore));
+await p.locator('.pane-chat .composer button[aria-label="Arrêter la dictée"]').click();
+await p.waitForTimeout(1500);
+ok("l'annonce disparaît une fois la dictée terminée", (await p.locator(".dictation").count()) === 0);
 await ta.fill("");
 
 // --- vouvoiement ---
@@ -151,13 +175,21 @@ for (const n of await readPlaces()) {
   }
 }
 ok("clic sur un nœud ouvre la page à droite", !!opened);
+ok(
+  "aucune étiquette de nœud ne porte la portée",
+  places.every((n) => !/privé|partagé/i.test(n.label ?? "")),
+);
 if (opened) {
   const head = await p.locator(".pane-page .page-head").innerText();
   console.log("    page ouverte :", head.replace(/\n/g, " · "));
   ok("la page affiche du markdown rendu", (await p.locator(".pane-page .page-body").count()) > 0);
   ok("le chemin du fichier n'est pas affiché", (await p.locator(".pane-page .page-head code").count()) === 0);
-  const chip = await p.locator(".pane-page .type-chip").count();
-  if (chip) {
+  const titre = await p.locator(".pane-page .page-head h2").innerText();
+  ok(`le titre ne porte pas la portée (« ${titre} »)`, !/privé|partagé/i.test(titre));
+  const chip = await p.locator(".pane-page .scope-chip").innerText();
+  ok(`la portée est une étiquette de la page (« ${chip} »)`, /^(privé|partagé)$/.test(chip));
+  const typeChip = await p.locator(".pane-page .type-chip").count();
+  if (typeChip) {
     const t = await p.locator(".pane-page .type-chip").innerText();
     ok(`type en français (« ${t} »)`, !/^(Person|Organization|Place|Project|Event|Task|Decision)$/.test(t));
   }
@@ -204,8 +236,48 @@ ok(
   shared.length > 0 && shared.every((n) => n.id.startsWith("/shared/")),
 );
 
+// --- folding the reading pane away ---
+await p.getByRole("button", { name: "Masquer la page" }).click();
+await p.waitForTimeout(400);
+ok("le panneau de lecture se masque", !(await p.locator(".pane-page").isVisible()));
+ok("le graphe reste visible", await p.locator(".pane-graph").isVisible());
+await p.getByRole("button", { name: "Afficher la page" }).click();
+await p.waitForTimeout(400);
+ok("et se réaffiche", await p.locator(".pane-page").isVisible());
+
+// --- narrow screen: one pane at a time, all three reachable ---
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(600);
+ok("le sélecteur de panneau apparaît", await p.locator(".view-switch").isVisible());
+ok("le bouton masquer/afficher disparaît", !(await p.locator(".pane-toggle").isVisible()));
+
+const seul = async () => {
+  const vus = [];
+  for (const c of ["pane-chat", "pane-graph", "pane-page"]) {
+    if (await p.locator(`.${c}`).isVisible()) vus.push(c);
+  }
+  return vus;
+};
+ok(`un seul panneau à la fois (${(await seul()).join(", ")})`, (await seul()).length === 1);
+
+for (const nom of ["Graphe", "Page", "Conversation"]) {
+  await p.locator(".view-switch button", { hasText: nom }).click();
+  await p.waitForTimeout(500);
+  const vus = await seul();
+  ok(`« ${nom} » affiche son panneau, seul (${vus.join(", ") || "aucun"})`, vus.length === 1);
+}
+
+const debordement = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+ok(`pas de défilement horizontal (${debordement} px)`, debordement <= 0);
+await p.screenshot({ path: "/tmp/panes-mobile.png", fullPage: false });
+
+await p.setViewportSize({ width: 1600, height: 900 });
+await p.waitForTimeout(500);
 await p.screenshot({ path: "/tmp/panes.png" });
 await b.close();
+if (transcription.length) {
+  console.log(`\nnote : ${transcription.length} échec(s) de transcription — attendu sans clé Mistral.`);
+}
 if (errs.length) {
   console.log("ERREURS :");
   errs.slice(0, 5).forEach((e) => console.log("  -", e));

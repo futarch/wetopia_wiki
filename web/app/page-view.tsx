@@ -1,18 +1,43 @@
 "use client";
 
+import { X } from "lucide-react";
 import Markdown from "react-markdown";
 import type { PageView } from "../lib/wiki-view.ts";
 import { typeColour, typeLabel } from "./type-colours.ts";
+
+/** Says where the page lives — a property of the page, not part of its name. */
+function Tags({ page }: { page: PageView }) {
+  return (
+    <>
+      {page.type && (
+        <span className="type-chip" style={{ background: typeColour(page.type) }}>
+          {typeLabel(page.type)}
+        </span>
+      )}
+      <span className="scope-chip" data-private={page.private}>
+        {page.private ? "privé" : "partagé"}
+      </span>
+    </>
+  );
+}
 
 export default function PagePane({
   page,
   loading,
   onFollow,
+  onClose,
 }: {
   page: PageView | null;
   loading: boolean;
   onFollow: (path: string) => void;
+  onClose: () => void;
 }) {
+  const close = (
+    <button type="button" className="pane-close" onClick={onClose} aria-label="Masquer ce panneau">
+      <X size={16} strokeWidth={2} aria-hidden />
+    </button>
+  );
+
   if (loading) return <div className="pane-empty">Ouverture…</div>;
   if (!page) {
     return (
@@ -27,6 +52,10 @@ export default function PagePane({
       <div className="page">
         <header className="page-head">
           <h2>{page.title}</h2>
+          <span className="scope-chip" data-private={page.private}>
+            {page.private ? "privé" : "partagé"}
+          </span>
+          {close}
         </header>
         <p className="gap">
           Cette page n'existe pas encore : d'autres pages y renvoient, mais personne ne l'a
@@ -40,11 +69,8 @@ export default function PagePane({
     <div className="page">
       <header className="page-head">
         <h2>{page.title}</h2>
-        {page.type && (
-          <span className="type-chip" style={{ background: typeColour(page.type) }}>
-            {typeLabel(page.type)}
-          </span>
-        )}
+        <Tags page={page} />
+        {close}
       </header>
       <div className="page-body">
         <Markdown
