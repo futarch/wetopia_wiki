@@ -12,7 +12,7 @@ import {
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import dynamic from "next/dynamic";
-import { ChevronRight, Mic, PanelRightClose, PanelRightOpen, Square } from "lucide-react";
+import { ChevronRight, Mic, PanelRightOpen, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
 import {
@@ -449,20 +449,6 @@ export default function Chat() {
         <ViewSwitch view={view} onChange={setView} />
 
         <div className="who">
-          <button
-            type="button"
-            className="pane-toggle"
-            onClick={() => setShowPage((v) => !v)}
-            aria-pressed={showPage}
-            title={showPage ? "Masquer le panneau de lecture" : "Afficher le panneau de lecture"}
-          >
-            {showPage ? (
-              <PanelRightClose size={17} strokeWidth={1.8} aria-hidden />
-            ) : (
-              <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden />
-            )}
-            <span>{showPage ? "Masquer la page" : "Afficher la page"}</span>
-          </button>
           <span className="viewer" title={viewer.email}>
             {viewer.name || viewer.email}
           </span>
@@ -516,6 +502,21 @@ export default function Chat() {
             onClose={() => setShowPage(false)}
           />
         </section>
+
+        {/* Folding the reading pane away is its own business, so the control
+            lives on it. All it leaves behind is this tab, on the edge it went
+            back to — the one place you would reach for it. */}
+        {!showPage && (
+          <button
+            type="button"
+            className="page-tab"
+            onClick={() => setShowPage(true)}
+            title="Afficher le panneau de lecture"
+          >
+            <PanelRightOpen size={16} strokeWidth={1.8} aria-hidden />
+            <span>Page</span>
+          </button>
+        )}
       </div>
     </div>
   );

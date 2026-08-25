@@ -33,29 +33,44 @@ export default function PagePane({
   onClose: () => void;
 }) {
   const close = (
-    <button type="button" className="pane-close" onClick={onClose} aria-label="Masquer ce panneau">
+    <button
+      type="button"
+      className="pane-close"
+      onClick={onClose}
+      aria-label="Masquer le panneau de lecture"
+      title="Masquer le panneau de lecture"
+    >
       <X size={16} strokeWidth={2} aria-hidden />
     </button>
   );
 
-  if (loading) return <div className="pane-empty">Ouverture…</div>;
+  if (loading)
+    return (
+      <>
+        {close}
+        <div className="pane-empty">Ouverture…</div>
+      </>
+    );
   if (!page) {
     return (
-      <div className="pane-empty">
-        Aucune page ouverte.
-        <span>Cliquez sur un nœud du graphe pour lire la page correspondante.</span>
-      </div>
+      <>
+        {close}
+        <div className="pane-empty">
+          Aucune page ouverte.
+          <span>Cliquez sur un nœud du graphe pour lire la page correspondante.</span>
+        </div>
+      </>
     );
   }
   if (!page.exists) {
     return (
       <div className="page">
+        {close}
         <header className="page-head">
           <h2>{page.title}</h2>
           <span className="scope-chip" data-private={page.private}>
             {page.private ? "privé" : "partagé"}
           </span>
-          {close}
         </header>
         <p className="gap">
           Cette page n'existe pas encore : d'autres pages y renvoient, mais personne ne l'a
@@ -67,10 +82,10 @@ export default function PagePane({
 
   return (
     <div className="page">
+      {close}
       <header className="page-head">
         <h2>{page.title}</h2>
         <Tags page={page} />
-        {close}
       </header>
       <div className="page-body">
         <Markdown

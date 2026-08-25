@@ -237,19 +237,42 @@ ok(
 );
 
 // --- folding the reading pane away ---
-await p.getByRole("button", { name: "Masquer la page" }).click();
-await p.waitForTimeout(400);
-ok("le panneau de lecture se masque", !(await p.locator(".pane-page").isVisible()));
+// Le graphe « visible » ne suffit pas : sigma redimensionnait ses canvas sans
+// redessiner, et la colonne rendue restait blanche. On compte donc les pixels
+// peints — les couches d'étiquettes de sigma sont en 2D, donc lisibles.
+const graphePeint = async () =>
+  p.locator(".pane-graph").evaluate((pane) => {
+    let n = 0;
+    for (const c of pane.querySelectorAll("canvas")) {
+      const ctx = c.getContext("2d");
+      if (!ctx) continue; // couche WebGL
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+    }
+    return n;
+  });
+
+const avant = await graphePeint();
+ok(`le graphe est peint avant de replier (${avant} px)`, avant > 0);
+await p.locator(".pane-page .pane-close").click();
+await p.waitForTimeout(500);
+ok("le panneau de lecture se replie", !(await p.locator(".pane-page").isVisible()));
 ok("le graphe reste visible", await p.locator(".pane-graph").isVisible());
-await p.getByRole("button", { name: "Afficher la page" }).click();
-await p.waitForTimeout(400);
+const apres = await graphePeint();
+ok(`le graphe est encore peint une fois replié (${apres} px)`, apres > 0);
+ok("un onglet permet de le rappeler", await p.locator(".page-tab").isVisible());
+await p.locator(".page-tab").click();
+await p.waitForTimeout(500);
 ok("et se réaffiche", await p.locator(".pane-page").isVisible());
+ok("l'onglet s'efface une fois la page revenue", (await p.locator(".page-tab").count()) === 0);
+ok("le contrôle vit sur le panneau de lecture", await p.locator(".pane-page .pane-close").isVisible());
+ok("plus rien pour la page dans la barre du haut", (await p.locator(".topbar .pane-toggle, .topbar .page-tab").count()) === 0);
 
 // --- narrow screen: one pane at a time, all three reachable ---
 await p.setViewportSize({ width: 390, height: 844 });
 await p.waitForTimeout(600);
 ok("le sélecteur de panneau apparaît", await p.locator(".view-switch").isVisible());
-ok("le bouton masquer/afficher disparaît", !(await p.locator(".pane-toggle").isVisible()));
+ok("ni onglet ni croix sur écran étroit", (await p.locator(".page-tab:visible, .pane-close:visible").count()) === 0);
 
 const seul = async () => {
   const vus = [];

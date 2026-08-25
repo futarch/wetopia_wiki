@@ -132,9 +132,16 @@ function Loader({
     });
   }, [data, load, sigma]);
 
-  // The pane resizes with the window and when the layout switches breakpoints.
+  // The pane resizes with the window, when the layout switches breakpoints, and
+  // when the reading pane folds away and gives its column back. `resize` only
+  // re-measures and re-sizes the canvases — it leaves them cleared — so without
+  // the refresh the graph turned into a blank white column the moment the
+  // reading pane was hidden.
   useEffect(() => {
-    const ro = new ResizeObserver(() => sigma.resize());
+    const ro = new ResizeObserver(() => {
+      sigma.resize();
+      sigma.refresh();
+    });
     ro.observe(sigma.getContainer());
     return () => ro.disconnect();
   }, [sigma]);
