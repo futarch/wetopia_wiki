@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -9,10 +9,19 @@ import {
   useMessagePartText,
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
+import dynamic from "next/dynamic";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
 import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
+import type { GraphEdge, GraphNode, PageView } from "../lib/wiki-view.ts";
+import PagePane from "./page-view.tsx";
 import SignIn from "./sign-in.tsx";
+
+// Sigma renders with WebGL and cannot be imported on the server.
+const WikiGraph = dynamic(() => import("./graph.tsx"), {
+  ssr: false,
+  loading: () => <div className="pane-empty">Chargement du graphe…</div>,
+});
 
 type Scope = "private" | "shared";
 
@@ -93,10 +102,27 @@ function Composer({ scope, dictation }: { scope: Scope; dictation: boolean }) {
   );
 }
 
-function Conversation({ threadId, scope }: { threadId: string; scope: Scope }) {
+function Conversation({
+  threadId,
+  scope,
+  onTurnEnd,
+}: {
+  threadId: string;
+  scope: Scope;
+  onTurnEnd: () => void;
+}) {
   const client = useMemo(() => createPiHttpClient({ baseUrl: "/api/pi" }), []);
   const dictation = useMemo(() => (isDictationSupported() ? new WetopiaDictationAdapter() : undefined), []);
   const runtime = usePiRuntime({ client, threadId, adapters: dictation ? { dictation } : undefined });
+
+  // The agent writes pages as it answers, so the graph is stale the moment a
+  // turn finishes. Refresh on the running→idle edge rather than polling.
+  const running = runtime.thread.getState().isRunning;
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !running) onTurnEnd();
+    wasRunning.current = running;
+  }, [running, onTurnEnd]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -145,6 +171,43 @@ export default function Chat() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [page, setPage] = useState<PageView | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+
+  const loadGraph = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/wiki/graph?scope=${scope}`);
+      if (res.ok) setGraph(await res.json());
+    } catch {
+      /* the chat still works without the graph */
+    }
+  }, [scope]);
+
+  const openPage = useCallback(
+    async (p: string) => {
+      setSelected(p);
+      setPageLoading(true);
+      try {
+        const res = await fetch(`/api/wiki/page?scope=${scope}&path=${encodeURIComponent(p)}`);
+        setPage(res.ok ? await res.json() : null);
+      } catch {
+        setPage(null);
+      } finally {
+        setPageLoading(false);
+      }
+    },
+    [scope],
+  );
+
+  // Scope decides what the graph may even contain, so both panes reset with it.
+  useEffect(() => {
+    if (!viewer) return;
+    setSelected(null);
+    setPage(null);
+    loadGraph();
+  }, [viewer, scope, loadGraph]);
 
   // One conversation per visit: opening or reloading the page starts a fresh
   // one, and switching scope starts another (scope is fixed for a conversation
@@ -212,11 +275,23 @@ export default function Chat() {
 
       {error && <p className="error">⚠ {error}</p>}
 
-      {threadId ? (
-        <Conversation key={threadId} threadId={threadId} scope={scope} />
-      ) : (
-        <div className="boot">{busy ? "Ouverture de la conversation…" : "…"}</div>
-      )}
+      <div className="panes">
+        <section className="pane pane-chat" aria-label="Conversation">
+          {threadId ? (
+            <Conversation key={threadId} threadId={threadId} scope={scope} onTurnEnd={loadGraph} />
+          ) : (
+            <div className="pane-empty">{busy ? "Ouverture de la conversation…" : "…"}</div>
+          )}
+        </section>
+
+        <section className="pane pane-graph" aria-label="Graphe du wiki">
+          <WikiGraph data={graph} selected={selected} onSelect={openPage} />
+        </section>
+
+        <section className="pane pane-page" aria-label="Page">
+          <PagePane page={page} loading={pageLoading} onFollow={openPage} />
+        </section>
+      </div>
     </div>
   );
 }

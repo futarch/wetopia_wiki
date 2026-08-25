@@ -70,12 +70,63 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .error { margin: 0; padding: 9px 20px; color: #a33; font-size: 13px; }
 .boot { margin: auto; color: var(--muted); }
 
+/* ---------- three panes: chat | graph | page ---------- */
+.panes {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr) minmax(320px, 1.2fr);
+}
+.pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.pane + .pane { border-left: 1px solid var(--line); }
+.pane-graph { background: var(--bg); position: relative; }
+/* Sigma measures its container, so the wrapper must have a real height rather
+   than collapsing to its (empty) content. */
+.pane-graph > div { flex: 1; min-height: 0; }
+.sigma-container { width: 100%; height: 100%; }
+.pane-page { overflow-y: auto; }
+
+.pane-empty {
+  margin: auto; padding: 26px; text-align: center; color: var(--muted);
+  font-size: 13.5px; max-width: 320px; display: flex; flex-direction: column; gap: 6px;
+}
+.pane-empty span { font-size: 12.5px; opacity: 0.85; }
+
+/* Below three columns the graph is the first thing to lose: the chat and the
+   page it produced carry the work; the graph is orientation. */
+@media (max-width: 1180px) {
+  .panes { grid-template-columns: minmax(320px, 1fr) minmax(300px, 1fr); }
+  .pane-graph { display: none; }
+}
+@media (max-width: 760px) {
+  .panes { grid-template-columns: 1fr; }
+  .pane-page { display: none; }
+}
+
+/* ---------- page pane ---------- */
+.page { display: flex; flex-direction: column; }
+.page-head {
+  padding: 16px 20px 12px; border-bottom: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+}
+.page-head h2 { margin: 0; font-size: 17px; flex: 1 1 auto; }
+.page-head code { font-size: 11.5px; color: var(--muted); flex-basis: 100%; }
+.type-chip {
+  color: #fff; font-size: 11px; padding: 2px 9px; border-radius: 99px;
+  letter-spacing: 0.02em; white-space: nowrap;
+}
+.page-body { padding: 6px 20px 28px; font-size: 14.5px; }
+.page-body h1, .page-body h2, .page-body h3 { font-size: 15.5px; margin: 18px 0 6px; }
+.page-body p, .page-body li { line-height: 1.65; }
+.page-body a { color: var(--accent); }
+.page-body code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.page-body pre { background: var(--bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+.gap { padding: 20px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
 /* ---------- conversation ---------- */
-.conv { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.viewport { flex: 1; overflow-y: auto; padding: 24px 20px 8px; display: flex; flex-direction: column; gap: 18px; }
-.row { max-width: 760px; width: 100%; margin: 0 auto; display: flex; }
+.conv { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.viewport { flex: 1; overflow-y: auto; padding: 20px 16px 8px; display: flex; flex-direction: column; gap: 18px; }
+.row { width: 100%; display: flex; }
 .row[data-role="user"] { justify-content: flex-end; }
-.bubble { padding: 11px 15px; border-radius: 14px; max-width: 86%; border: 1px solid var(--line); background: var(--panel); }
+.bubble { padding: 10px 13px; border-radius: 14px; max-width: 90%; font-size: 14.5px; border: 1px solid var(--line); background: var(--panel); }
 .row[data-role="user"] .bubble { background: var(--accent-soft); border-color: transparent; }
 .bubble > :first-child { margin-top: 0; }
 .bubble > :last-child { margin-bottom: 0; }
@@ -83,15 +134,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .bubble code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
 .bubble a { color: var(--accent); }
 
-.tool { max-width: 760px; width: 100%; margin: 0 auto; }
+.tool { width: 100%; }
 .tool code { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 3px 9px; display: inline-block; }
 
 .empty { margin: auto; text-align: center; color: var(--muted); max-width: 430px; padding: 30px; }
 .empty strong { display: block; color: var(--ink); font-size: 17px; margin-bottom: 6px; }
 
 /* ---------- composer ---------- */
-.composer { border-top: 1px solid var(--line); background: var(--panel); padding: 14px 20px 18px; }
-.composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+.composer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px 14px; }
+.composer form { display: flex; gap: 8px; align-items: flex-end; }
 .input-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .composer textarea {
   resize: none; font: inherit; color: inherit; background: var(--bg);
@@ -100,7 +151,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .transcript:not(:empty) { font-size: 12.5px; color: var(--muted); font-style: italic; padding: 0 3px; }
-.composer button { border: 0; background: var(--accent); color: #fff; border-radius: var(--radius); padding: 12px 18px; font-weight: 600; }
+.composer button { border: 0; background: var(--accent); color: #fff; border-radius: var(--radius); padding: 11px 14px; font-weight: 600; }
 .composer button[data-cancel="true"] { background: var(--muted); }
 .mic {
   background: var(--bg) !important; color: var(--ink) !important;
@@ -110,7 +161,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* assistant-ui disables the inactive dictation button rather than hiding it:
    only one of "start" / "stop" is ever live, so show only the live one. */
 .mic:disabled { display: none; }
-.state { color: var(--muted); font-size: 12.5px; max-width: 760px; margin: 6px auto 0; min-height: 17px; }
+.state { color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 16px; }
 
 /* ---------- sign in ---------- */
 .signin { display: grid; place-items: center; height: 100vh; padding: 20px; }
