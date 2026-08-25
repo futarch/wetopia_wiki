@@ -28,7 +28,7 @@ l'environnement — jamais dans le dépôt :
 WETOPIA_TEST_EMAIL=… WETOPIA_TEST_PASSWORD=… npm run check:panes -- http://localhost:3000
 ```
 
-## Les deux tâches planifiées
+## La tâche planifiée
 
 ### Lint nocturne
 
@@ -41,13 +41,30 @@ même file d'écriture que les conversations. C'est ce qui garde vrai
 l'invariant « un seul écrivain » — un conteneur cron avec sa propre copie
 serait un second écrivain en course sur les mêmes bundles.
 
-### Surveillance
+## Surveillance
+
+`/api/health` existe et répond, mais **rien ne l'appelle périodiquement** :
+l'appel toutes les 15 minutes a été retiré parce qu'il ne prévenait
+personne. Un échec ne faisait sortir `curl` en erreur que dans les logs de
+cron, qu'il fallait aller lire — le coût d'une panne non vue restait
+entier.
+
+Pour rétablir une vraie surveillance, il faut d'abord une destination
+d'alerte. Le plus simple : une sonde externe (UptimeRobot ou équivalent)
+sur `https://<app>/api/health`, qui envoie un mail sur un 503. Ajouter
+alors, si on veut aussi une trace côté application, dans
+`clevercloud/cron.json` :
 
 ```
 */15 * * * *  curl -fsS https://<app>/api/health   # échoue (exit ≠ 0) si status = down
 ```
 
-Ou n'importe quelle sonde externe (UptimeRobot, etc.) sur la même URL.
+En attendant, l'appel se fait à la main :
+
+```
+curl -fsS https://<app>/api/health                                  # vivant ?
+curl -fsS -H "authorization: Bearer $WETOPIA_CRON_SECRET" …/api/health   # le rapport complet
+```
 
 ## Qui peut créer un compte
 
@@ -128,7 +145,8 @@ Deux niveaux, volontairement :
 | `authorization: Bearer $WETOPIA_CRON_SECRET` | tous les contrôles, avec détail |
 
 Le **code HTTP porte le verdict** : `200` si `ok` ou `warn`, `503` si `down`.
-Une sonde bête suffit donc, sans lire le JSON.
+Une sonde bête suffit donc, sans lire le JSON. Aucune ne l'appelle
+aujourd'hui : voir « Surveillance » plus haut.
 
 Contrôles :
 
@@ -138,7 +156,8 @@ Contrôles :
 | `durabilite` | la dernière sauvegarde a échoué (écriture **non** durable) | des écritures attendent d'être sauvegardées |
 | `bundles` | un repo n'a **aucune** copie durable | — |
 | `lint` | — | jamais exécuté, ou dernier passage > `WETOPIA_LINT_MAX_AGE_H` (36 h) |
-| `configuration` | `MISTRAL_API_KEY` absent | secret cron absent ; en prod, `BETTER_AUTH_SECRET` ou `DATABASE_URL` absents |
+| `configuration` | `MISTRAL_API_KEY` absent | secret cron absent ; en prod, `BETTER_AUTH_SECRET`, `DATABASE_URL` ou `WETOPIA_ALLOWED_EMAILS` absents |
+| `memoire` | — | le tas dépasse 85 % de son plafond (mourir en plein tour emporte l'unique écrivain) |
 
 ### Pourquoi le battement de cœur vit dans le wiki
 
