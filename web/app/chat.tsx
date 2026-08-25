@@ -7,6 +7,7 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   groupPartByType,
+  useAuiState,
   useMessagePartText,
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
@@ -119,7 +120,28 @@ function ToolCall({ toolName }: { toolName: string }) {
  * single group here and shown closed: the line says what is happening, opening
  * it shows the steps.
  */
-function Steps({ running, count, children }: { running: boolean; count: number; children: ReactNode }) {
+function Steps({ count, lastIndex, children }: { count: number; lastIndex: number; children: ReactNode }) {
+  // Two things have to be true for this line to say « Consultation du wiki… »:
+  // work is happening, and nothing has come of it yet.
+  //
+  // Not the group's own status for the first: it reads "running" only while a
+  // part inside it runs, and react-pi hands us tool calls already finished —
+  // measured, it held for 25 ms, so the label reached its finished form before
+  // anyone could read it. Not the message's status either: mid-turn a message
+  // moves through several ("requires-action" while its tool calls are pending,
+  // and others between steps), and enumerating the ones that mean busy made the
+  // line appear or not depending on where the stream happened to be cut. The
+  // thread has one answer, so ask it.
+  //
+  // The second half is what keeps earlier turns on their final wording while a
+  // new one runs: a finished turn has its answer sitting after the group. It
+  // has to weigh content rather than count parts — an empty text part is
+  // appended ahead of the first token.
+  const running = useAuiState(
+    (s) =>
+      s.thread.isRunning &&
+      !s.message.parts.slice(lastIndex + 1).some((p) => p.type !== "text" || p.text.length > 0),
+  );
   return (
     <details className="steps" data-running={running}>
       <summary>
@@ -301,8 +323,8 @@ function Conversation({
                               case "group-steps":
                                 return (
                                   <Steps
-                                    running={part.status?.type === "running"}
                                     count={part.indices.length}
+                                    lastIndex={part.indices[part.indices.length - 1]}
                                   >
                                     {children}
                                   </Steps>

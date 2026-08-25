@@ -19,9 +19,10 @@ npm run test:agent    # boucle agent en conditions réelles (Mistral)
 npm run test:lint     # lint nocturne en conditions réelles (Mistral)
 npm run check:ui      # navigateur : connexion, conversation, dictée
 npm run check:panes   # navigateur : les trois panneaux, le graphe, la barrière
+npm run check:steps   # navigateur : le bloc d'étapes, sur un vrai tour d'agent (Mistral)
 ```
 
-Les deux vérifications navigateur lisent le compte de test dans
+Les vérifications navigateur lisent le compte de test dans
 l'environnement — jamais dans le dépôt :
 
 ```

@@ -13,6 +13,7 @@
     "check:ui": "node lib/ui.check.mjs",
     "test:lint": "node --experimental-strip-types lib/lint/lint.integration.test.ts",
     "check:panes": "node panes.check.mjs",
+    "check:steps": "node steps.check.mjs",
     "seed:dev": "node --experimental-strip-types lib/dev/seed-fixture.ts"
   },
   "dependencies": {
