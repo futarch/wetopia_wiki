@@ -10,6 +10,7 @@ import {
 } from "@assistant-ui/react";
 import { createPiHttpClient, usePiRuntime } from "@assistant-ui/react-pi";
 import dynamic from "next/dynamic";
+import { Mic, Square } from "lucide-react";
 import Markdown from "react-markdown";
 import { useViewer, signOut } from "../lib/auth-client.ts";
 import { WetopiaDictationAdapter, isDictationSupported } from "../lib/dictation.ts";
@@ -26,9 +27,24 @@ const WikiGraph = dynamic(() => import("./graph.tsx"), {
 type Scope = "private" | "shared";
 
 const SCOPE_HINT: Record<Scope, string> = {
-  private: "L'agent lit le wiki partagé et tes notes privées. Il n'écrit que chez toi.",
-  shared: "L'agent ne voit que le wiki partagé. Ce que tu dis ici peut devenir une page pour tout le monde.",
+  private: "L'agent lit le wiki partagé et vos notes privées. Il n'écrit que chez vous.",
+  shared:
+    "L'agent ne voit que le wiki partagé. Ce que vous dites ici peut devenir une page pour tout le monde.",
 };
+
+/** The only way to share something: the scope of the conversation you say it in. */
+function ScopeSwitch({ scope, onChange }: { scope: Scope; onChange: (s: Scope) => void }) {
+  return (
+    <div className="scope-switch" role="group" aria-label="Portée de la conversation">
+      <button type="button" data-on={scope === "private"} onClick={() => onChange("private")}>
+        Privé
+      </button>
+      <button type="button" data-on={scope === "shared"} onClick={() => onChange("shared")}>
+        Partagé
+      </button>
+    </div>
+  );
+}
 
 function MarkdownText() {
   const { text } = useMessagePartText();
@@ -50,53 +66,75 @@ function ToolCall({ toolName }: { toolName: string }) {
   );
 }
 
-function Composer({ scope, dictation }: { scope: Scope; dictation: boolean }) {
+function Composer({
+  scope,
+  onScope,
+  dictation,
+}: {
+  scope: Scope;
+  onScope: (s: Scope) => void;
+  dictation: boolean;
+}) {
   return (
     <div className="composer">
       <ComposerPrimitive.Root asChild>
         <form>
-          <div className="input-wrap">
-            <ComposerPrimitive.Input
-              autoFocus
-              rows={1}
-              placeholder={scope === "shared" ? "Écrire dans le wiki partagé…" : "Note privée, question…"}
-            />
-            <ComposerPrimitive.DictationTranscript asChild>
-              <span className="transcript" />
-            </ComposerPrimitive.DictationTranscript>
+          <ComposerPrimitive.Input
+            autoFocus
+            rows={2}
+            // Enter goes to the next line; only the button sends. Dictated and
+            // written notes both tend to run over several lines.
+            submitMode="none"
+            placeholder="Écrire…"
+          />
+          <ComposerPrimitive.DictationTranscript asChild>
+            <span className="transcript" />
+          </ComposerPrimitive.DictationTranscript>
+
+          <div className="composer-row">
+            <ScopeSwitch scope={scope} onChange={onScope} />
+            <div className="composer-actions">
+              {dictation && (
+                <>
+                  <ComposerPrimitive.Dictate asChild>
+                    <button type="button" className="mic" title="Dicter" aria-label="Dicter">
+                      <Mic size={17} strokeWidth={1.9} aria-hidden />
+                    </button>
+                  </ComposerPrimitive.Dictate>
+                  <ComposerPrimitive.StopDictation asChild>
+                    <button
+                      type="button"
+                      className="mic"
+                      data-recording="true"
+                      title="Arrêter la dictée"
+                      aria-label="Arrêter la dictée"
+                    >
+                      <Square size={15} strokeWidth={2} fill="currentColor" aria-hidden />
+                    </button>
+                  </ComposerPrimitive.StopDictation>
+                </>
+              )}
+
+              <ThreadPrimitive.If running={false}>
+                <ComposerPrimitive.Send asChild>
+                  <button type="submit">Envoyer</button>
+                </ComposerPrimitive.Send>
+              </ThreadPrimitive.If>
+              <ThreadPrimitive.If running>
+                <ComposerPrimitive.Cancel asChild>
+                  <button type="button" data-cancel="true">
+                    Arrêter
+                  </button>
+                </ComposerPrimitive.Cancel>
+              </ThreadPrimitive.If>
+            </div>
           </div>
-
-          {dictation && (
-            <>
-              <ComposerPrimitive.Dictate asChild>
-                <button type="button" className="mic" title="Dicter" aria-label="Dicter">
-                  🎙
-                </button>
-              </ComposerPrimitive.Dictate>
-              <ComposerPrimitive.StopDictation asChild>
-                <button type="button" className="mic" data-recording="true" title="Arrêter la dictée" aria-label="Arrêter la dictée">
-                  ⏹
-                </button>
-              </ComposerPrimitive.StopDictation>
-            </>
-          )}
-
-          <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send asChild>
-              <button type="submit">Envoyer</button>
-            </ComposerPrimitive.Send>
-          </ThreadPrimitive.If>
-          <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel asChild>
-              <button type="button" data-cancel="true">
-                Arrêter
-              </button>
-            </ComposerPrimitive.Cancel>
-          </ThreadPrimitive.If>
         </form>
       </ComposerPrimitive.Root>
       <div className="state">
-        <ThreadPrimitive.If running>L'agent travaille — la sauvegarde a lieu en fin de tour.</ThreadPrimitive.If>
+        <ThreadPrimitive.If running>
+          L'agent travaille — la sauvegarde a lieu en fin de tour.
+        </ThreadPrimitive.If>
       </div>
     </div>
   );
@@ -105,10 +143,12 @@ function Composer({ scope, dictation }: { scope: Scope; dictation: boolean }) {
 function Conversation({
   threadId,
   scope,
+  onScope,
   onTurnEnd,
 }: {
   threadId: string;
   scope: Scope;
+  onScope: (s: Scope) => void;
   onTurnEnd: () => void;
 }) {
   const client = useMemo(() => createPiHttpClient({ baseUrl: "/api/pi" }), []);
@@ -158,7 +198,7 @@ function Conversation({
               />
             </div>
           </ThreadPrimitive.Viewport>
-          <Composer scope={scope} dictation={!!dictation} />
+          <Composer scope={scope} onScope={onScope} dictation={!!dictation} />
         </div>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
@@ -249,16 +289,6 @@ export default function Chat() {
       <header className="topbar">
         <div className="brand">
           <strong>Wetopia</strong>
-          <span>Le wiki de la communauté</span>
-        </div>
-
-        <div className="scope-switch" role="group" aria-label="Portée de la conversation">
-          <button type="button" data-on={scope === "private"} onClick={() => setScope("private")}>
-            Privé
-          </button>
-          <button type="button" data-on={scope === "shared"} onClick={() => setScope("shared")}>
-            Partagé
-          </button>
         </div>
 
         <div className="who">
@@ -269,18 +299,35 @@ export default function Chat() {
         </div>
       </header>
 
-      <p className="scope-line" data-scope={scope}>
-        {SCOPE_HINT[scope]}
-      </p>
-
       {error && <p className="error">⚠ {error}</p>}
 
       <div className="panes">
         <section className="pane pane-chat" aria-label="Conversation">
           {threadId ? (
-            <Conversation key={threadId} threadId={threadId} scope={scope} onTurnEnd={loadGraph} />
+            <Conversation
+              key={threadId}
+              threadId={threadId}
+              scope={scope}
+              onScope={setScope}
+              onTurnEnd={loadGraph}
+            />
           ) : (
-            <div className="pane-empty">{busy ? "Ouverture de la conversation…" : "…"}</div>
+            // The scope toggle stays put while the next conversation opens,
+            // otherwise it flickers away on every switch.
+            <div className="conv">
+              <div className="viewport">
+                <div className="pane-empty">{busy ? "Ouverture de la conversation…" : "…"}</div>
+              </div>
+              <div className="composer">
+                <form onSubmit={(e) => e.preventDefault()}>
+                  <textarea rows={2} placeholder="Écrire…" disabled />
+                  <div className="composer-row">
+                    <ScopeSwitch scope={scope} onChange={setScope} />
+                  </div>
+                </form>
+                <div className="state" />
+              </div>
+            </div>
           )}
         </section>
 

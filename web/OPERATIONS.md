@@ -18,6 +18,14 @@ npm test              # déterministe, sans clé API : garde, durabilité, lint,
 npm run test:agent    # boucle agent en conditions réelles (Mistral)
 npm run test:lint     # lint nocturne en conditions réelles (Mistral)
 npm run check:ui      # navigateur : connexion, conversation, dictée
+npm run check:panes   # navigateur : les trois panneaux, le graphe, la barrière
+```
+
+Les deux vérifications navigateur lisent le compte de test dans
+l'environnement — jamais dans le dépôt :
+
+```
+WETOPIA_TEST_EMAIL=… WETOPIA_TEST_PASSWORD=… npm run check:panes -- http://localhost:3000
 ```
 
 ## Les deux tâches planifiées

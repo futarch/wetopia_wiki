@@ -2,7 +2,7 @@
 
 import Markdown from "react-markdown";
 import type { PageView } from "../lib/wiki-view.ts";
-import { typeColour } from "./type-colours.ts";
+import { typeColour, typeLabel } from "./type-colours.ts";
 
 export default function PagePane({
   page,
@@ -27,7 +27,6 @@ export default function PagePane({
       <div className="page">
         <header className="page-head">
           <h2>{page.title}</h2>
-          <code>{page.path}</code>
         </header>
         <p className="gap">
           Cette page n'existe pas encore : d'autres pages y renvoient, mais personne ne l'a
@@ -43,10 +42,9 @@ export default function PagePane({
         <h2>{page.title}</h2>
         {page.type && (
           <span className="type-chip" style={{ background: typeColour(page.type) }}>
-            {page.type}
+            {typeLabel(page.type)}
           </span>
         )}
-        <code>{page.path}</code>
       </header>
       <div className="page-body">
         <Markdown
