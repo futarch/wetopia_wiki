@@ -23,11 +23,18 @@ npm run check:steps   # navigateur : le bloc d'étapes, sur un vrai tour d'agent
 ```
 
 Les vérifications navigateur lisent le compte de test dans
-l'environnement — jamais dans le dépôt :
+l'environnement — jamais dans le dépôt. Les trois visent
+`http://localhost:3200` par défaut, et acceptent une autre adresse en
+argument ou par `WETOPIA_BASE_URL` :
 
 ```
 WETOPIA_TEST_EMAIL=… WETOPIA_TEST_PASSWORD=… npm run check:panes -- http://localhost:3000
 ```
+
+`check:ui` tient une vraie conversation, et il bascule en portée partagée pour
+vérifier que changer de portée ouvre bien une autre conversation. Le viser sur
+la production reviendrait donc à faire parler l'agent dans le wiki de tout le
+monde : à réserver à une instance locale.
 
 ## La tâche planifiée
 

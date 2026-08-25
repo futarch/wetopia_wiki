@@ -5,7 +5,7 @@
 // /api/transcribe → Mistral speech model → composer) runs end to end unattended.
 import { chromium } from "playwright";
 
-const base = process.argv[2] ?? "http://localhost:3100";
+const base = process.argv[2] ?? process.env.WETOPIA_BASE_URL ?? "http://localhost:3200";
 // Credentials come from the environment only. A default here would be a real
 // account's password living in the repository — and it would keep working long
 // after everyone forgot it was there.
@@ -85,14 +85,28 @@ expect("connecté : la conversation s'ouvre seule", true);
 expect("aucune liste de conversations (session unique)", (await page.locator(".thread-item").count()) === 0);
 
 // ---- scope ----
-expect("scope privé par défaut", (await page.locator(".scope-line").getAttribute("data-scope")) === "private");
-await page.getByRole("button", { name: "Partagé", exact: true }).click();
+// La portée se lit dans le composeur depuis l'interface trois panneaux. Ce
+// contrôle interrogeait encore le bandeau `.scope-line`, retiré en 25a5b71 :
+// il levait une exception au lieu d'échouer, donc il ne disait plus rien — ni
+// que la portée était juste, ni qu'il avait cessé de la vérifier.
+const scopeSwitch = page.locator(".composer .scope-switch");
+const scopeNow = async () => {
+  const on = scopeSwitch.locator('button[data-on="true"]');
+  return (await on.count()) ? (await on.first().innerText()).trim() : "(aucune)";
+};
+const scopeInitiale = await scopeNow();
+expect(`portée privée par défaut (${scopeInitiale})`, scopeInitiale === "Privé");
+
+await scopeSwitch.getByRole("button", { name: "Partagé", exact: true }).click();
 await page.waitForFunction(
-  () => document.querySelector(".scope-line")?.getAttribute("data-scope") === "shared",
+  () => document.querySelector('.composer .scope-switch button[data-on="true"]')?.textContent?.trim() === "Partagé",
   { timeout: 30_000 },
 );
-await page.waitForSelector(".composer textarea", { timeout: 90_000 });
-expect("bascule vers partagé (nouvelle conversation)", true);
+// Changer de portée ouvre une autre conversation : le composeur est désactivé
+// le temps qu'elle s'ouvre.
+await page.waitForSelector(".composer textarea:not([disabled])", { timeout: 90_000 });
+expect("bascule vers partagé (nouvelle conversation)", (await scopeNow()) === "Partagé");
+expect("la conversation repart vierge", (await page.locator('.row[data-role="assistant"]').count()) === 0);
 
 // ---- dictation ----
 const mic = page.locator("button.mic").first();
@@ -114,18 +128,27 @@ if (hasMic) {
 await page.locator(".composer textarea").fill("Bonjour ! Que sais-tu sur le jardin des Balmes ?");
 await page.getByRole("button", { name: "Envoyer" }).click();
 await page.getByRole("button", { name: "Envoyer" }).waitFor({ state: "visible", timeout: 300_000 });
+// Le texte de la réponse seul : le bloc d'étapes et les appels d'outils
+// portent eux aussi du texte, et « 3 étapes dans le wiki » suffirait presque à
+// faire passer un seuil posé sur la bulle entière.
+const reponses = () =>
+  [...document.querySelectorAll('.row[data-role="assistant"] .bubble')].map((r) => {
+    const c = r.cloneNode(true);
+    for (const n of c.querySelectorAll(".steps, .tool")) n.remove();
+    return (c.textContent ?? "").trim();
+  });
 await page.waitForFunction(
-  () => {
-    const rows = [...document.querySelectorAll('.row[data-role="assistant"] .bubble')];
-    return rows.some((r) => {
-      const tools = [...r.querySelectorAll(".tool")].map((t) => t.textContent ?? "").join("");
-      return (r.textContent ?? "").replace(tools, "").trim().length > 40;
-    });
-  },
+  () =>
+    [...document.querySelectorAll('.row[data-role="assistant"] .bubble')].some((r) => {
+      const c = r.cloneNode(true);
+      for (const n of c.querySelectorAll(".steps, .tool")) n.remove();
+      return (c.textContent ?? "").trim().length > 40;
+    }),
+  undefined,
   { timeout: 300_000 },
 );
-const reply = await page.locator('.row[data-role="assistant"] .bubble').last().innerText();
-expect("réponse de l'agent affichée", reply.length > 40);
+const reply = (await page.evaluate(reponses)).at(-1) ?? "";
+expect(`réponse de l'agent affichée (${reply.length} caractères)`, reply.length > 40);
 
 await page.screenshot({ path: shot });
 
