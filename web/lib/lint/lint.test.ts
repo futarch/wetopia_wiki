@@ -44,8 +44,15 @@ page(path.join(shared, "orpheline.md"), `type: Concept\ntitle: "Idée isolée"\n
 fs.writeFileSync(path.join(shared, "index.md"), `# Index — wiki partagé\n\n- [/shared/people/rene-dupont.md](/shared/people/rene-dupont.md) — Maraîcher à Lyon.\n- [/shared/disparue.md](/shared/disparue.md) — Page supprimée depuis.\n`);
 fs.writeFileSync(path.join(shared, "log.md"), "# Journal\n");
 
-// private bundle: a page that duplicates a shared one
+// private bundle: one page that copies a shared one, and one that does what
+// §8 actually asks — same subject, but a link to the shared page and only
+// personal notes around it.
 page(path.join(priv, "rene.md"), `type: Person\ntitle: "René Dupont"\ndescription: "Copie privée."`);
+page(
+  path.join(priv, "broyeur.md"),
+  `type: Task\ntitle: "Trouver un broyeur"\ndescription: "Ce que j'en pense."\ntask: { state: open }`,
+  "Voir [la tâche partagée](/shared/tasks/broyeur.md). J'ai un contact à Vaise.",
+);
 fs.writeFileSync(path.join(priv, "index.md"), "# Index privé\n");
 fs.writeFileSync(path.join(priv, "log.md"), "# Journal privé\n");
 
@@ -104,8 +111,31 @@ t("tags équivalents signalés (Lyon / lyon)", () => {
 });
 
 t("page privée recouvrant une page partagée signalée — et seulement côté privé", () => {
-  assert.equal(kinds(privFindings, "duplicate-of-shared").length, 1);
+  const d = kinds(privFindings, "duplicate-of-shared");
+  assert.equal(d.length, 1, JSON.stringify(d));
+  assert.equal(d[0].path, "/users/albert/rene.md");
   assert.equal(kinds(findings, "duplicate-of-shared").length, 0);
+});
+
+// La règle ne rapprochait que les titres. Elle reprochait donc « préférer un
+// lien » à une page faite d'un lien et de notes personnelles — la forme même
+// que la charte §8 prescrit, et celle de la fixture de développement.
+t("une page privée qui renvoie à sa jumelle partagée n'est pas un doublon", () => {
+  const d = kinds(privFindings, "duplicate-of-shared");
+  assert.ok(
+    !d.some((f) => f.path === "/users/albert/broyeur.md"),
+    JSON.stringify(d),
+  );
+});
+
+t("le lien doit viser la jumelle, pas n'importe quelle page partagée", () => {
+  const ailleurs = { ...privPages.find((x) => x.path === "/users/albert/broyeur.md")! };
+  ailleurs.links = ["/shared/people/rene-dupont.md"];
+  const d = analyze({ pages: [ailleurs], sharedPages, now }).filter(
+    (f) => f.kind === "duplicate-of-shared",
+  );
+  assert.equal(d.length, 1, JSON.stringify(d));
+  assert.match(d[0].detail, /sans y renvoyer/);
 });
 
 t("frontmatter illisible signalé", () => {

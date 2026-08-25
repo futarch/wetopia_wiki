@@ -227,13 +227,18 @@ export function analyze({ pages, sharedPages = [], now }: AnalyzeInput): Finding
   }
   for (const p of content) {
     const twin = sharedBySlug.get(slug(String(p.frontmatter?.title ?? path.basename(p.file))));
-    if (twin) {
-      findings.push({
-        kind: "duplicate-of-shared",
-        path: p.path,
-        detail: `recouvre une page partagée (${twin.path}) — préférer un lien (§8)`,
-      });
-    }
+    if (!twin) continue;
+    // A private page about a shared subject is what §8 asks for — link to the
+    // shared page, write only what is personal. Matching titles alone said
+    // nothing about which of the two was happening, so the rule reproached
+    // « préférer un lien » to pages made of a link and personal notes: the
+    // exact shape the charter prescribes. The link is what settles it.
+    if (p.links.includes(twin.path)) continue;
+    findings.push({
+      kind: "duplicate-of-shared",
+      path: p.path,
+      detail: `recouvre une page partagée (${twin.path}) sans y renvoyer — préférer un lien (§8)`,
+    });
   }
 
   return findings;
