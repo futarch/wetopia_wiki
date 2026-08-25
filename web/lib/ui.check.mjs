@@ -22,7 +22,18 @@ const shot = "/tmp/wetopia-ui.png";
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium",
-  args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+  args: [
+    "--use-fake-device-for-media-stream",
+    "--use-fake-ui-for-media-stream",
+    // CHECK_TLS_SPKI lets a sandboxed environment name the public keys of the
+    // CA its proxy intercepts with. Every other certificate is still verified.
+    ...(process.env.CHECK_TLS_SPKI
+      ? [`--ignore-certificate-errors-spki-list=${process.env.CHECK_TLS_SPKI}`]
+      : []),
+  ],
+  // Outbound HTTPS from such an environment goes through a local proxy; without
+  // it a run against a deployed URL just resets the connection.
+  ...(process.env.HTTPS_PROXY ? { proxy: { server: process.env.HTTPS_PROXY } } : {}),
 });
 const context = await browser.newContext({
   viewport: { width: 1280, height: 860 },
