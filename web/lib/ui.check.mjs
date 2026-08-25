@@ -6,8 +6,18 @@
 import { chromium } from "playwright";
 
 const base = process.argv[2] ?? "http://localhost:3100";
-const EMAIL = process.env.WETOPIA_TEST_EMAIL ?? "albert.dessaint@gmail.com";
-const PASSWORD = process.env.WETOPIA_TEST_PASSWORD ?? "motdepasse-solide-2026";
+// Credentials come from the environment only. A default here would be a real
+// account's password living in the repository — and it would keep working long
+// after everyone forgot it was there.
+const EMAIL = process.env.WETOPIA_TEST_EMAIL;
+const PASSWORD = process.env.WETOPIA_TEST_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.error(
+    "WETOPIA_TEST_EMAIL et WETOPIA_TEST_PASSWORD sont requis.\n" +
+      "  ex. WETOPIA_TEST_EMAIL=… WETOPIA_TEST_PASSWORD=… node lib/ui.check.mjs [url]",
+  );
+  process.exit(2);
+}
 const shot = "/tmp/wetopia-ui.png";
 
 const browser = await chromium.launch({
