@@ -75,6 +75,24 @@ wiki. `/api/health` le signale en production, et le filtre vit dans notre
 route d'auth plutôt que dans un hook de la bibliothèque, avec les autres
 politiques de l'app.
 
+L'interface ne propose pas de créer un compte : c'est un geste
+d'exploitation. Deux étapes, dans cet ordre :
+
+```
+clever env set WETOPIA_ALLOWED_EMAILS "a@exemple.fr,b@exemple.fr"
+clever restart                    # sans ça, l'instance garde l'ancienne liste
+curl -fsS -X POST https://<app>/api/auth/sign-up/email \
+  -H 'content-type: application/json' \
+  -d '{"name":"Prénom Nom","email":"b@exemple.fr","password":"…"}'
+```
+
+Le mot de passe est transmis à la personne hors du dépôt, et elle le
+change quand elle veut. Le bundle privé, lui, n'est créé qu'à la première
+conversation — c'est-à-dire au premier chargement de l'app, le navigateur
+ouvrant une conversation tout seul. Tant que la personne ne s'est pas
+connectée une fois, `/api/health` ne liste pas son bundle : c'est normal,
+pas une alerte.
+
 ## Le modèle : `-latest`, décidé, pas subi
 
 `WETOPIA_MODEL` reste sur `mistral-medium-latest`, et c'est un choix, pas un
